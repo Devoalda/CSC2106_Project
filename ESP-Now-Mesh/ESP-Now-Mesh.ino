@@ -1,6 +1,26 @@
 #include <WiFi.h>
 #include <esp_now.h>
 
+// Structure for the route table entry
+struct RouteTableEntry {
+  uint8_t destinationNodeAddress;
+  uint8_t nextHopNodeAddress;
+};
+
+// Struc for transmiting sensor data
+struct SensorData {
+  uint8_t rootNodeAddress;
+  float c02Data;
+  float temperatureData;
+  float thirdValue;
+};
+
+// Maximum number of nodes in the network
+#define MAX_NODES 10
+
+// Route table to store next hop for each destination node
+RouteTableEntry routeTable[MAX_NODES];
+
 void formatMacAddress(const uint8_t *macAddr, char *buffer, int maxLength)
 // Formats MAC Address
 {
@@ -10,24 +30,41 @@ void formatMacAddress(const uint8_t *macAddr, char *buffer, int maxLength)
 void receiveCallback(const uint8_t *macAddr, const uint8_t *data, int dataLen)
 // Called when data is received
 {
-  // Only allow a maximum of 250 characters in the message + a null terminating byte
-  char buffer[ESP_NOW_MAX_DATA_LEN + 1];
-  int msgLen = min(ESP_NOW_MAX_DATA_LEN, dataLen);
-  strncpy(buffer, (const char *)data, msgLen);
+  if (dataLen != sizeof(SensorData)) {
+    Serial.println("Received data length does not match SensorData struct size");
+    return;
+  }
+  Serial.println("Received data in correct format");
 
-  // Make sure we are null terminated
-  buffer[msgLen] = 0;
+  // Parse the received SensorData struct
+  SensorData receivedData;
+  memcpy(&receivedData, data, sizeof(SensorData));
+
+  // // Only allow a maximum of 250 characters in the message + a null terminating byte
+  // char buffer[ESP_NOW_MAX_DATA_LEN + 1];
+  // int msgLen = min(ESP_NOW_MAX_DATA_LEN, dataLen);
+  // strncpy(buffer, (const char *)data, msgLen);
+
+  // // Make sure we are null terminated
+  // buffer[msgLen] = 0;
 
   // Format the MAC address
   char macStr[18];
   formatMacAddress(macAddr, macStr, 18);
 
-  // Send Debug log message to the serial port
-  Serial.printf("Received message from: %s - %s\n", macStr, buffer);
+  // // Send Debug log message to the serial port
+  // Serial.printf("Received message from: %s - %s\n", macStr, buffer);
+
+  // Print the received sensor data
+  Serial.printf("Received message from: %s\n", macStr);
+  Serial.printf("Root Node Address: %d\n", receivedData.rootNodeAddress);
+  Serial.printf("CO2 Data: %.2f\n", receivedData.c02Data);
+  Serial.printf("Temperature Data: %.2f\n", receivedData.temperatureData);
+  Serial.printf("Third Value: %.2f\n", receivedData.thirdValue);
 
   // Add an additional message to the buffer
-  char additionalMessage[] = "Test Extra Message";
-  strncat(buffer, additionalMessage, sizeof(additionalMessage));
+  // char additionalMessage[] = "Test Extra Message";
+  // strncat(buffer, additionalMessage, sizeof(additionalMessage));
 
   // Add the received MAC address into the peer list if it doesn't exist
   esp_now_peer_info_t peerInfo = {};
@@ -44,15 +81,35 @@ void receiveCallback(const uint8_t *macAddr, const uint8_t *data, int dataLen)
   esp_now_peer_num_t peer_num;
   esp_now_get_peer_num(&peer_num);
 
+  // // Loop through the peer list and send the message to each peer except the sender
+  // for (int i = 0; i < peer_num.total_num; i++) {
+  //   if (esp_now_fetch_peer(i, &peerInfo) == ESP_OK) {
+  //     if (memcmp(peerInfo.peer_addr, macAddr, 6) != 0) {  // Check if not the sender
+  //       esp_err_t result = esp_now_send(peerInfo.peer_addr, (const uint8_t *)buffer, strlen(buffer));
+
+  //       // Print results to serial monitor
+  //       if (result == ESP_OK) {
+  //         Serial.printf("Forwarded message: %s to: %02X:%02X:%02X:%02X:%02X:%02X\n", buffer,
+  //                       peerInfo.peer_addr[0], peerInfo.peer_addr[1], peerInfo.peer_addr[2],
+  //                       peerInfo.peer_addr[3], peerInfo.peer_addr[4], peerInfo.peer_addr[5]);
+  //       } else {
+  //         Serial.println("Error sending message to peer");
+  //       }
+  //     } else {
+  //       // Serial.println("Sender!");
+  //     }
+  //   }
+  // }
+
   // Loop through the peer list and send the message to each peer except the sender
   for (int i = 0; i < peer_num.total_num; i++) {
     if (esp_now_fetch_peer(i, &peerInfo) == ESP_OK) {
       if (memcmp(peerInfo.peer_addr, macAddr, 6) != 0) {  // Check if not the sender
-        esp_err_t result = esp_now_send(peerInfo.peer_addr, (const uint8_t *)buffer, strlen(buffer));
+        esp_err_t result = esp_now_send(peerInfo.peer_addr, (const uint8_t *)&receivedData, sizeof(SensorData));
 
         // Print results to serial monitor
         if (result == ESP_OK) {
-          Serial.printf("Forwarded message: %s to: %02X:%02X:%02X:%02X:%02X:%02X\n", buffer,
+          Serial.printf("Forwarded message to: %02X:%02X:%02X:%02X:%02X:%02X\n",
                         peerInfo.peer_addr[0], peerInfo.peer_addr[1], peerInfo.peer_addr[2],
                         peerInfo.peer_addr[3], peerInfo.peer_addr[4], peerInfo.peer_addr[5]);
         } else {
@@ -80,7 +137,39 @@ void sentCallback(const uint8_t *macAddr, esp_now_send_status_t status)
   // Serial.println(status == ESP_NOW_SEND_SUCCESS ? "Delivery Success" : "Delivery Fail");
 }
 
-void broadcast(const String &message)
+// void broadcast(const String &message)
+// // Emulates a broadcast
+// {
+//   // Broadcast a message to every device in range
+//   uint8_t broadcastAddress[] = { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF };
+//   esp_now_peer_info_t peerInfo = {};
+
+//   memcpy(&peerInfo.peer_addr, broadcastAddress, 6);
+//   if (!esp_now_is_peer_exist(broadcastAddress)) {
+//     esp_now_add_peer(&peerInfo);
+//   }
+//   // Send message
+//   esp_err_t result = esp_now_send(broadcastAddress, (const uint8_t *)message.c_str(), message.length());
+
+//   // Print results to serial monitor
+//   if (result == ESP_OK) {
+//     Serial.println("Broadcast message success");
+//   } else if (result == ESP_ERR_ESPNOW_NOT_INIT) {
+//     Serial.println("ESP-NOW not Init.");
+//   } else if (result == ESP_ERR_ESPNOW_ARG) {
+//     Serial.println("Invalid Argument");
+//   } else if (result == ESP_ERR_ESPNOW_INTERNAL) {
+//     Serial.println("Internal Error");
+//   } else if (result == ESP_ERR_ESPNOW_NO_MEM) {
+//     Serial.println("ESP_ERR_ESPNOW_NO_MEM");
+//   } else if (result == ESP_ERR_ESPNOW_NOT_FOUND) {
+//     Serial.println("Peer not found.");
+//   } else {
+//     Serial.println("Unknown error");
+//   }
+// }
+
+void broadcast(const SensorData &sensorData)
 // Emulates a broadcast
 {
   // Broadcast a message to every device in range
@@ -92,7 +181,7 @@ void broadcast(const String &message)
     esp_now_add_peer(&peerInfo);
   }
   // Send message
-  esp_err_t result = esp_now_send(broadcastAddress, (const uint8_t *)message.c_str(), message.length());
+  esp_err_t result = esp_now_send(broadcastAddress, (const uint8_t *)&sensorData, sizeof(SensorData));
 
   // Print results to serial monitor
   if (result == ESP_OK) {
@@ -155,8 +244,19 @@ void setup() {
   float min = 0.0;
   float max = 100.0;
 
-  broadcast(getRandomFloatAsString(min, max));
+  //broadcast(getRandomFloatAsString(min, max));
 }
 
 void loop() {
+  SensorData sensorData;
+  sensorData.rootNodeAddress = 0;
+  sensorData.c02Data = 20.0;
+  sensorData.temperatureData = 20.0;
+  sensorData.thirdValue = 20.0;
+
+  // Broadcast sensor data
+  broadcast(sensorData);
+
+  // Delay for 5 seconds
+  delay(5000);
 }
