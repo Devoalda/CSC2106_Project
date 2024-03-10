@@ -21,12 +21,14 @@ struct Handshake {
 // init global vars
 SensorData sensorData;
 Handshake msg;
+esp_now_peer_info_t peerInfo = {};
+esp_now_peer_num_t peer_num;
 
 // Maximum number of nodes in the network
 #define MAX_NODES 10
 
 // Global variable to track if the current node is connected to the master
-uint8_t isConnectedToMaster = 1;
+uint8_t isConnectedToMaster = 0;
 
 void formatMacAddress(const uint8_t *macAddr, char *buffer, int maxLength)
 // Formats MAC Address
@@ -37,7 +39,11 @@ void formatMacAddress(const uint8_t *macAddr, char *buffer, int maxLength)
 void addPeerToPeerList(const uint8_t *macAddr)
 // Add the received MAC address into the peer list if it doesn't exist
 {
-  esp_now_peer_info_t peerInfo = {};
+  // Format the MAC address
+  char macStr[18];
+  formatMacAddress(macAddr, macStr, 18);
+
+  Serial.printf("Received peer address: %s\n", macStr);
 
   memcpy(peerInfo.peer_addr, macAddr, 6);  // Copy MAC address
   peerInfo.channel = 0;                    // Use the default channel
@@ -53,13 +59,17 @@ void addPeerToPeerList(const uint8_t *macAddr)
 void sendToAllPeers(const SensorData &sensorData)
 // Send the message to each peer in the peer list
 {
-  esp_now_peer_info_t peerInfo = {};
-  esp_now_peer_num_t peer_num;
+  
 
   esp_now_get_peer_num(&peer_num);
   Serial.println("Sending....");
   for (int i = 0; i < peer_num.total_num; i++) {
-    if (esp_now_fetch_peer(i, &peerInfo) == ESP_OK) {
+    // Format the MAC address
+    char macStr[18];
+    formatMacAddress(peerInfo.peer_addr, macStr, 18);
+    Serial.printf("Peer address to send: %s\n", macStr);
+    if (esp_now_fetch_peer(1, &peerInfo) == ESP_OK) 
+    {
       esp_err_t result = esp_now_send(peerInfo.peer_addr, (const uint8_t *)&sensorData, sizeof(SensorData));
 
       // Print results to serial monitor
@@ -71,6 +81,10 @@ void sendToAllPeers(const SensorData &sensorData)
         Serial.println("Error sending message to peer");
       }
     }
+    else
+    {
+      Serial.println("Peer not found");
+    }
   }
 }
 
@@ -78,7 +92,6 @@ void sendToAllPeers(const SensorData &sensorData)
 void receiveCallback(const uint8_t *macAddr, const uint8_t *data, int dataLen)
 // Called when data is received
 {
-  esp_now_peer_info_t peerInfo = {};
   // Format the MAC address
   char macStr[18];
   formatMacAddress(macAddr, macStr, 18);
@@ -108,7 +121,6 @@ void receiveCallback(const uint8_t *macAddr, const uint8_t *data, int dataLen)
     Handshake receivedMsg;
     memcpy(&receivedMsg, data, sizeof(Handshake));
 
-    //TOFIX: keeps on going here
     // handle requests
     if (receivedMsg.requestType == 0) 
     {
@@ -193,7 +205,6 @@ void broadcast(const Handshake &msg)
 {
   // Broadcast a message to every device in range
   uint8_t broadcastAddress[] = { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF };
-  esp_now_peer_info_t peerInfo = {};
 
   memcpy(&peerInfo.peer_addr, broadcastAddress, 6);
   if (!esp_now_is_peer_exist(broadcastAddress)) {
@@ -263,25 +274,28 @@ void setup() {
     delay(3000);
     ESP.restart();
   }
-
-  // float min = 0.0;
-  // float max = 100.0;
-
-  //broadcast(getRandomFloatAsString(min, max));
 }
 
+
 void loop() {
-  esp_now_peer_num_t peer_num;
   sensorData.rootNodeAddress = 0;
   sensorData.c02Data = 20.0;
   sensorData.temperatureData = 20.0;
   sensorData.thirdValue = 20.0;
 
-  // Broadcast sensor data
-  //broadcast(sensorData);
-
   esp_now_get_peer_num(&peer_num);
+  Serial.printf("Peer num: %d\n", peer_num);
   
+  // Print peers in peer list
+  // Serial.println("Peers in Peer List:");
+  // for (int i = 0; i < peer_num.total_num; i++) {
+  //   if (esp_now_fetch_peer(i, &peerInfo) == ESP_OK) {
+  //     char macStr[18];
+  //     formatMacAddress(peerInfo.peer_addr, macStr, 18);
+  //     Serial.println(macStr);
+  //   }
+  // }
+
 
   // If there is no one in peerlist, do route discovery
   if (peer_num.total_num == 0) 
