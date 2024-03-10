@@ -2,12 +2,6 @@
 #include <esp_now.h>
 #include <PubSubClient.h>
 
-// Structure for the route table entry
-struct RouteTableEntry {
-  uint8_t destinationNodeAddress;
-  uint8_t nextHopNodeAddress;
-};
-
 // Struc for transmiting sensor data
 struct SensorData {
   uint8_t rootNodeAddress;
@@ -16,14 +10,23 @@ struct SensorData {
   float thirdValue;
 };
 
+// Connection Request Struct
+struct Handshake {
+  // 0 for request, 1 for reply
+  uint8_t requestType;
+  // 1 if connected to master, 0 otherwise
+  uint8_t isConnectedToMaster;
+};
+
+// init global vars
+SensorData sensorData;
+Handshake msg;
+
 // Maximum number of nodes in the network
 #define MAX_NODES 10
 
-// Flag to determine master mesh node
-#define MESH_MASTER false
-
-// Route table to store next hop for each destination node
-RouteTableEntry routeTable[MAX_NODES];
+// Global variable to track if the current node is connected to the master
+uint8_t isConnectedToMaster = 1;
 
 void formatMacAddress(const uint8_t *macAddr, char *buffer, int maxLength)
 // Formats MAC Address
@@ -35,6 +38,7 @@ void addPeerToPeerList(const uint8_t *macAddr)
 // Add the received MAC address into the peer list if it doesn't exist
 {
   esp_now_peer_info_t peerInfo = {};
+
   memcpy(peerInfo.peer_addr, macAddr, 6);  // Copy MAC address
   peerInfo.channel = 0;                    // Use the default channel
   peerInfo.encrypt = false;                // No encryption for simplicity
@@ -51,8 +55,9 @@ void sendToAllPeers(const SensorData &sensorData)
 {
   esp_now_peer_info_t peerInfo = {};
   esp_now_peer_num_t peer_num;
-  esp_now_get_peer_num(&peer_num);
 
+  esp_now_get_peer_num(&peer_num);
+  Serial.println("Sending....");
   for (int i = 0; i < peer_num.total_num; i++) {
     if (esp_now_fetch_peer(i, &peerInfo) == ESP_OK) {
       esp_err_t result = esp_now_send(peerInfo.peer_addr, (const uint8_t *)&sensorData, sizeof(SensorData));
@@ -69,37 +74,104 @@ void sendToAllPeers(const SensorData &sensorData)
   }
 }
 
+
 void receiveCallback(const uint8_t *macAddr, const uint8_t *data, int dataLen)
 // Called when data is received
 {
-  if (dataLen != sizeof(SensorData)) {
-    Serial.println("Received data length does not match SensorData struct size");
-    return;
-  }
-  Serial.println("Received data in correct format");
-
-  // Parse the received SensorData struct
-  SensorData receivedData;
-  memcpy(&receivedData, data, sizeof(SensorData));
-
+  esp_now_peer_info_t peerInfo = {};
   // Format the MAC address
   char macStr[18];
   formatMacAddress(macAddr, macStr, 18);
 
-  // Print the received sensor data
-  Serial.printf("Received message from: %s\n", macStr);
-  Serial.printf("Root Node Address: %d\n", receivedData.rootNodeAddress);
-  Serial.printf("CO2 Data: %.2f\n", receivedData.c02Data);
-  Serial.printf("Temperature Data: %.2f\n", receivedData.temperatureData);
-  Serial.printf("Third Value: %.2f\n", receivedData.thirdValue);
+  // when sensor data received
+  if (dataLen == sizeof(SensorData)) 
+  {
+    Serial.println("Sensor Data received");
+    // Message is sensor data from peer nodes
+    SensorData receivedData;
+    memcpy(&receivedData, data, sizeof(SensorData));
 
-  // Add the received MAC address into the peer list
-  addPeerToPeerList(macAddr);
+    // Print the received sensor data
+    Serial.printf("Received sensor data from: %s\n", macStr);
+    Serial.printf("Root Node Address: %d\n", receivedData.rootNodeAddress);
+    Serial.printf("CO2 Data: %.2f\n", receivedData.c02Data);
+    Serial.printf("Temperature Data: %.2f\n", receivedData.temperatureData);
+    Serial.printf("Third Value: %.2f\n", receivedData.thirdValue);
 
-  // Send the message to all peers in the peer list
-  sendToAllPeers(receivedData);
+    // Send the message to all peers in the peer list
+    sendToAllPeers(receivedData);
+  } 
+  else if (dataLen == sizeof(Handshake)) 
+  {
+    Serial.println("Handshake received");
+    // Message is a handshake message
+    Handshake receivedMsg;
+    memcpy(&receivedMsg, data, sizeof(Handshake));
+
+    //TOFIX: keeps on going here
+    // handle requests
+    if (receivedMsg.requestType == 0) 
+    {
+      Serial.println("Request received");
+      // Request type is 0, it's a request for connection status
+      // Reply with the current connection status
+      Handshake replyMsg;
+      replyMsg.requestType = 1;
+      replyMsg.isConnectedToMaster = isConnectedToMaster;
+
+      memcpy(peerInfo.peer_addr, macAddr, 6);
+      if (!esp_now_is_peer_exist(macAddr)) 
+      {
+        esp_now_add_peer(&peerInfo);
+      }
+
+      // send
+      esp_err_t result = esp_now_send(macAddr, (const uint8_t *)&replyMsg, sizeof(Handshake));
+      
+      // Remove the broadcast address from the peer list
+      esp_now_del_peer(macAddr);
+
+      // Print results to serial monitor
+      if (result == ESP_OK) {
+        Serial.println("Reply message success");
+      } else if (result == ESP_ERR_ESPNOW_NOT_INIT) {
+        Serial.println("ESP-NOW not Init.");
+      } else if (result == ESP_ERR_ESPNOW_ARG) {
+        Serial.println("Invalid Argument");
+      } else if (result == ESP_ERR_ESPNOW_INTERNAL) {
+        Serial.println("Internal Error");
+      } else if (result == ESP_ERR_ESPNOW_NO_MEM) {
+        Serial.println("ESP_ERR_ESPNOW_NO_MEM");
+      } else if (result == ESP_ERR_ESPNOW_NOT_FOUND) {
+        Serial.println("Peer not found.");
+      } else {
+        Serial.println("Unknown error");
+      }
+    }
+    // handle replies
+    else if (receivedMsg.requestType == 1) 
+    {
+      Serial.println("Reply received");
+      // Reply type is 1, it's a reply containing connection status
+      if (receivedMsg.isConnectedToMaster) 
+      {
+        Serial.printf("Node %s is CONNECTED to the master\n", macStr);
+        // Add this node to peer list
+        addPeerToPeerList(macAddr);
+      } 
+      else 
+      {
+        Serial.printf("Node %s is NOT CONNECTED to master\n", macStr);
+      }
+    }
+
+
+  } 
+  else 
+  {
+    Serial.println("Received data length does not match expected formats");
+  }
 }
-
 
 
 
@@ -116,7 +188,7 @@ void sentCallback(const uint8_t *macAddr, esp_now_send_status_t status)
 }
 
 
-void broadcast(const SensorData &sensorData)
+void broadcast(const Handshake &msg)
 // Emulates a broadcast
 {
   // Broadcast a message to every device in range
@@ -127,8 +199,12 @@ void broadcast(const SensorData &sensorData)
   if (!esp_now_is_peer_exist(broadcastAddress)) {
     esp_now_add_peer(&peerInfo);
   }
+
   // Send message
-  esp_err_t result = esp_now_send(broadcastAddress, (const uint8_t *)&sensorData, sizeof(SensorData));
+  esp_err_t result = esp_now_send(broadcastAddress, (const uint8_t *)&msg, sizeof(Handshake));
+
+  // Remove the broadcast address from the peer list
+  esp_now_del_peer(broadcastAddress);
 
   // Print results to serial monitor
   if (result == ESP_OK) {
@@ -195,14 +271,33 @@ void setup() {
 }
 
 void loop() {
-  SensorData sensorData;
+  esp_now_peer_num_t peer_num;
   sensorData.rootNodeAddress = 0;
   sensorData.c02Data = 20.0;
   sensorData.temperatureData = 20.0;
   sensorData.thirdValue = 20.0;
 
   // Broadcast sensor data
-  broadcast(sensorData);
+  //broadcast(sensorData);
+
+  esp_now_get_peer_num(&peer_num);
+  
+
+  // If there is no one in peerlist, do route discovery
+  if (peer_num.total_num == 0) 
+  {
+    Serial.println("Commencing route discovery");
+    // set msg header to request
+    msg.requestType = 0;
+    broadcast(msg);
+  }
+  // else send data to all in peer list
+  else
+  {
+    Serial.println("Sending data to all peers");
+    sendToAllPeers(sensorData);
+  }
+
 
   // Delay for 5 seconds
   delay(5000);
