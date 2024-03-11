@@ -3,16 +3,23 @@
 #include <WiFi.h>
 #include <esp_now.h>
 #include <PubSubClient.h>
+#include <Arduino.h>
+#include <SensirionI2CScd4x.h>
+#include <Wire.h>
+// #include <esp_wifi.h>
 
 
-// Struc for transmiting sensor data
+// Define the maximum length of the MAC address
+const int MAX_MAC_LENGTH = 18;  // For example, a MAC address is usually 17 characters long (including colons) plus 1 for null terminator
+
+// Struc for transmitting sensor data
 struct SensorData {
-  uint8_t rootNodeAddress;
+  // uint8_t rootNodeAddress;
+  char MACaddr[MAX_MAC_LENGTH];  // Use a char array to store the MAC address
   float c02Data;
   float temperatureData;
-  float thirdValue;
+  float humidityData;
 };
-
 // Connection Request Struct
 struct Handshake {
   // 0 for request, 1 for reply
@@ -26,6 +33,8 @@ struct Handshake {
 // init global variables
 SensorData sensorData;
 Handshake msg;
+char MACaddrG[MAX_MAC_LENGTH];  // Use a char array to store the MAC address
+
 esp_now_peer_info_t peerInfo = {};
 esp_now_peer_num_t peer_num;
 uint8_t isConnectedToMaster = 0;
@@ -35,6 +44,9 @@ uint8_t numberOfHopsToMaster = 0;
 // Maximum number of nodes in the network
 #define MAX_NODES 10
 
+// Global variable to track if the current node is connected to the master
+uint8_t isConnectedToMaster = 0;
+uint8_t numberOfHopsToMaster = 0;
 
 void formatMacAddress(const uint8_t *macAddr, char *buffer, int maxLength)
 // Formats MAC Address
@@ -106,10 +118,10 @@ void receiveCallback(const uint8_t *macAddr, const uint8_t *data, int dataLen)
 
     // Print the received sensor data
     Serial.printf("Received sensor data from: %s\n", macStr);
-    Serial.printf("Root Node Address: %d\n", receivedData.rootNodeAddress);
+    // Serial.printf("Root Node Address: %d\n", receivedData.rootNodeAddress);
     Serial.printf("CO2 Data: %.2f\n", receivedData.c02Data);
     Serial.printf("Temperature Data: %.2f\n", receivedData.temperatureData);
-    Serial.printf("Third Value: %.2f\n", receivedData.thirdValue);
+    Serial.printf("Humidity Data: %.2f\n", receivedData.humidityData);
 
     // Send the message to all peers in the peer list
     sendToAllPeers(receivedData);
@@ -170,6 +182,9 @@ void receiveCallback(const uint8_t *macAddr, const uint8_t *data, int dataLen)
         Serial.printf("Hop Count: %d", numberOfHopsToMaster);
         // Add this node to peer list
         addPeerToPeerList(macAddr);
+        isConnectedToMaster = receivedMsg.isConnectedToMaster;
+        numberOfHopsToMaster = receivedMsg.numberOfHopsToMaster + 1;
+        Serial.printf("Hop Count: %d", numberOfHopsToMaster);
       } else {
         Serial.printf("Node %s is NOT CONNECTED to master\n", macStr);
       }
@@ -242,6 +257,13 @@ float getRandomFloat(float min, float max) {
   return randomFloat;
 }
 
+// Function to parse a String MAC address to uint8_t array
+void parseMacAddress(String macAddress, uint8_t *macAddressBytes) {
+  sscanf(macAddress.c_str(), "%hhx:%hhx:%hhx:%hhx:%hhx:%hhx",
+         &macAddressBytes[0], &macAddressBytes[1], &macAddressBytes[2],
+         &macAddressBytes[3], &macAddressBytes[4], &macAddressBytes[5]);
+}
+
 String getRandomFloatAsString(float min, float max) {
   // Generate a random floating-point number
   float randomFloat = min + random() / ((float)RAND_MAX / (max - min));
@@ -254,6 +276,28 @@ String getRandomFloatAsString(float min, float max) {
   return floatString;
 }
 
+
+#define I2C_SDA 46
+#define I2C_SCL 45
+
+SensirionI2CScd4x scd4x;
+
+void printUint16Hex(uint16_t value) {
+  Serial.print(value < 4096 ? "0" : "");
+  Serial.print(value < 256 ? "0" : "");
+  Serial.print(value < 16 ? "0" : "");
+  Serial.print(value, HEX);
+}
+
+void printSerialNumber(uint16_t serial0, uint16_t serial1, uint16_t serial2) {
+  Serial.print("Serial: 0x");
+  printUint16Hex(serial0);
+  printUint16Hex(serial1);
+  printUint16Hex(serial2);
+  Serial.println();
+}
+
+
 void setup() {
 
   // Set up Serial Monitor
@@ -265,11 +309,17 @@ void setup() {
   Serial.println("ESP-NOW Broadcast Demo");
 
   // Print MAC address
+
+  // Print the MAC address
   Serial.print("MAC Address: ");
   Serial.println(WiFi.macAddress());
+  // formatMacAddress(WiFi.macAddress(), MACaddrG, MAX_MAC_LENGTH); // Get and format the MAC address, then store it in sensorData.MACaddr
+
 
   // Disconnect from WiFi
   WiFi.disconnect();
+
+
 
   // Initialize ESP-NOW
   if (esp_now_init() == ESP_OK) {
@@ -286,43 +336,195 @@ void setup() {
   // esp_wifi_set_promiscuous(true);
   // esp_wifi_set_channel(13, WIFI_SECOND_CHAN_NONE);
   // esp_wifi_set_promiscuous(false);
+
+  Wire.begin(I2C_SDA, I2C_SCL);
+
+  uint16_t error;
+  char errorMessage[256];
+
+  scd4x.begin(Wire);
+
+  // stop potentially previously started measurement
+  error = scd4x.stopPeriodicMeasurement();
+  if (error) {
+    Serial.print("Error trying to execute stopPeriodicMeasurement(): ");
+    errorToString(error, errorMessage, 256);
+    Serial.println(errorMessage);
+  }
+
+  uint16_t serial0;
+  uint16_t serial1;
+  uint16_t serial2;
+  error = scd4x.getSerialNumber(serial0, serial1, serial2);
+  if (error) {
+    Serial.print("Error trying to execute getSerialNumber(): ");
+    errorToString(error, errorMessage, 256);
+    Serial.println(errorMessage);
+  } else {
+    printSerialNumber(serial0, serial1, serial2);
+  }
+
+  // Start Measurement
+  error = scd4x.startPeriodicMeasurement();
+  if (error) {
+    Serial.print("Error trying to execute startPeriodicMeasurement(): ");
+    errorToString(error, errorMessage, 256);
+    Serial.println(errorMessage);
+  }
 }
 
-
 void loop() {
-  sensorData.rootNodeAddress = 0;
-  sensorData.c02Data = getRandomFloat(100.0, 1000.0);
-  sensorData.temperatureData = getRandomFloat(0.0, 40.0);
-  sensorData.thirdValue = getRandomFloat(90.0, 1030.0);
+  // Initialize sensor data structure
+  SensorData sensorData;
 
+  // Read sensor data
+  uint16_t error;
+  char errorMessage[256];
+  uint16_t co2 = 0;
+  float temperature = 0.0f;
+  float humidity = 0.0f;
+  bool isDataReady = false;
+
+  uint8_t macAddressBytes[6];
+  parseMacAddress(WiFi.macAddress(), macAddressBytes);
+
+  // Format the MAC address and store it in sensorData.MACaddr
+  formatMacAddress(macAddressBytes, sensorData.MACaddr, MAX_MAC_LENGTH);
+
+  error = scd4x.getDataReadyFlag(isDataReady);
+  if (error) {
+    Serial.print("Error trying to execute getDataReadyFlag(): ");
+    errorToString(error, errorMessage, 256);
+    Serial.println(errorMessage);
+    // If error, use random data
+    sensorData.c02Data = getRandomFloat(100.0, 1000.0);
+    sensorData.temperatureData = getRandomFloat(0.0, 40.0);
+    sensorData.humidityData = getRandomFloat(90.0, 1030.0);
+  } else if (!isDataReady) {
+    // If data not ready, return
+    return;
+  } else {
+    // Read sensor measurement
+    error = scd4x.readMeasurement(co2, temperature, humidity);
+    if (error) {
+      Serial.print("Error trying to execute readMeasurement(): ");
+      errorToString(error, errorMessage, 256);
+      Serial.println(errorMessage);
+      // If error, use random data
+      sensorData.c02Data = getRandomFloat(100.0, 1000.0);
+      sensorData.temperatureData = getRandomFloat(0.0, 40.0);
+      sensorData.humidityData = getRandomFloat(90.0, 1030.0);
+    } else if (co2 == 0) {
+      Serial.println("Invalid sample detected, skipping.");
+      // If invalid sample, use random data
+      sensorData.c02Data = getRandomFloat(100.0, 1000.0);
+      sensorData.temperatureData = getRandomFloat(0.0, 40.0);
+      sensorData.humidityData = getRandomFloat(90.0, 1030.0);
+    } else {
+      // Assign sensor data to sensorData structure
+      sensorData.c02Data = co2;
+      sensorData.temperatureData = temperature;
+      sensorData.humidityData = humidity;
+    }
+  }
+
+  // Handle ESP-NOW communication
+  // uint8_t peer_num;
   esp_now_get_peer_num(&peer_num);
   Serial.printf("Peer num: %d\n", peer_num);
 
-  // Print peers in peer list
-  // Serial.println("Peers in Peer List:");
-  // for (int i = 0; i < peer_num.total_num; i++) {
-  //   if (esp_now_fetch_peer(i, &peerInfo) == ESP_OK) {
-  //     char macStr[18];
-  //     formatMacAddress(peerInfo.peer_addr, macStr, 18);
-  //     Serial.println(macStr);
-  //   }
-  // }
-
-
-  // If there is no one in peerlist, do route discovery
   if (peer_num.total_num == 0) {
     Serial.println("Commencing route discovery");
-    // set msg header to request
+    // Set message header to request
     msg.requestType = 0;
     broadcast(msg);
-  }
-  // else send data to all in peer list
-  else {
+  } else {
     Serial.println("Sending data to all peers");
     sendToAllPeers(sensorData);
   }
 
 
-  // Delay for 5 seconds
-  delay(5000);
+  delay(3000);
 }
+
+// void loop() {
+
+//   // sensorData.rootNodeAddress = 0;
+//   uint8_t macAddressBytes[6];
+//   parseMacAddress(WiFi.macAddress(), macAddressBytes);
+
+//   // Format the MAC address and store it in sensorData.MACaddr
+//   formatMacAddress(macAddressBytes, sensorData.MACaddr, MAX_MAC_LENGTH);
+//   sensorData.c02Data = getRandomFloat(100.0, 1000.0);
+//   sensorData.temperatureData = getRandomFloat(0.0, 40.0);
+//   sensorData.humidityData = getRandomFloat(90.0, 1030.0);
+
+//   esp_now_get_peer_num(&peer_num);
+//   Serial.printf("Peer num: %d\n", peer_num);
+
+//   // Print peers in peer list
+//   // Serial.println("Peers in Peer List:");
+//   // for (int i = 0; i < peer_num.total_num; i++) {
+//   //   if (esp_now_fetch_peer(i, &peerInfo) == ESP_OK) {
+//   //     char macStr[18];
+//   //     formatMacAddress(peerInfo.peer_addr, macStr, 18);
+//   //     Serial.println(macStr);
+//   //   }
+//   // }
+
+
+//   // If there is no one in peerlist, do route discovery
+//   if (peer_num.total_num == 0) {
+//     Serial.println("Commencing route discovery");
+//     // set msg header to request
+//     msg.requestType = 0;
+//     broadcast(msg);
+//   }
+//   // else send data to all in peer list
+//   else {
+//     Serial.println("Sending data to all peers");
+//     sendToAllPeers(sensorData);
+//   }
+
+
+//   // Delay for 5 seconds
+//   // delay(5000);
+
+//   uint16_t error;
+//   char errorMessage[256];
+
+//   delay(100);
+
+//   // Read Measurement
+//   uint16_t co2 = 0;
+//   float temperature = 0.0f;
+//   float humidity = 0.0f;
+//   bool isDataReady = false;
+//   error = scd4x.getDataReadyFlag(isDataReady);
+//   if (error) {
+//     Serial.print("Error trying to execute getDataReadyFlag(): ");
+//     errorToString(error, errorMessage, 256);
+//     Serial.println(errorMessage);
+//     return;
+//   }
+//   if (!isDataReady) {
+//     return;
+//   }
+//   error = scd4x.readMeasurement(co2, temperature, humidity);
+//   if (error) {
+//     Serial.print("Error trying to execute readMeasurement(): ");
+//     errorToString(error, errorMessage, 256);
+//     Serial.println(errorMessage);
+//   } else if (co2 == 0) {
+//     Serial.println("Invalid sample detected, skipping.");
+//   } else {
+//     Serial.print("Co2:");
+//     Serial.print(co2);
+//     Serial.print("\t");
+//     Serial.print("Temperature:");
+//     Serial.print(temperature);
+//     Serial.print("\t");
+//     Serial.print("Humidity:");
+//     Serial.println(humidity);
+//   }
+// }
