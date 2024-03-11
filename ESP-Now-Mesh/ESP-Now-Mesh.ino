@@ -19,21 +19,21 @@ struct Handshake {
   uint8_t requestType;
   // 1 if connected to master, 0 otherwise
   uint8_t isConnectedToMaster;
+  // number of hops to master
+  uint8_t numberOfHopsToMaster;
 };
 
-// init global vars
+// init global variables
 SensorData sensorData;
 Handshake msg;
 esp_now_peer_info_t peerInfo = {};
 esp_now_peer_num_t peer_num;
-
+uint8_t isConnectedToMaster = 0;
+uint8_t numberOfHopsToMaster = 0;
 
 
 // Maximum number of nodes in the network
 #define MAX_NODES 10
-
-// Global variable to track if the current node is connected to the master
-uint8_t isConnectedToMaster = 0;
 
 
 void formatMacAddress(const uint8_t *macAddr, char *buffer, int maxLength)
@@ -127,6 +127,7 @@ void receiveCallback(const uint8_t *macAddr, const uint8_t *data, int dataLen)
       Handshake replyMsg;
       replyMsg.requestType = 1;
       replyMsg.isConnectedToMaster = isConnectedToMaster;
+      replyMsg.numberOfHopsToMaster = numberOfHopsToMaster;
 
       memcpy(peerInfo.peer_addr, macAddr, 6);
       if (!esp_now_is_peer_exist(macAddr)) {
@@ -162,6 +163,11 @@ void receiveCallback(const uint8_t *macAddr, const uint8_t *data, int dataLen)
       // Reply type is 1, it's a reply containing connection status
       if (receivedMsg.isConnectedToMaster) {
         Serial.printf("Node %s is CONNECTED to the master\n", macStr);
+        // Set current node status
+        isConnectedToMaster = 1;
+        // Set current hop count to master
+        numberOfHopsToMaster = receivedMsg.numberOfHopsToMaster + 1;
+        Serial.printf("Hop Count: %d", numberOfHopsToMaster);
         // Add this node to peer list
         addPeerToPeerList(macAddr);
       } else {
