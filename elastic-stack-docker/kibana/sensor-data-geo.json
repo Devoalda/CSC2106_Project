@@ -1,0 +1,37 @@
+{
+  "description": "Pipeline for processing sensor data from MQTT",
+  "processors": [
+    {
+      "json": {
+        "field": "message",
+        "target_field": "sensor_data",
+        "ignore_failure": true
+      }
+    },
+    {
+      "set": {
+        "field": "macStr",
+        "value": "{{sensor_data.macStr}}"
+      }
+    },
+    {
+      "set": {
+        "field": "humidityData",
+        "value": "{{sensor_data.humidityData}}"
+      }
+    },
+    {
+      "set": {
+        "field": "c02Data",
+        "value": "{{sensor_data.c02Data}}"
+      }
+    },
+    {
+      "set": {
+        "field": "temperatureData",
+        "value": "{{sensor_data.temperatureData}}"
+      }
+    }
+  ]
+}
+

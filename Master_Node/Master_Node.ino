@@ -1,17 +1,21 @@
-// Client
+// MASTER
 
 #include <WiFi.h>
 #include <esp_now.h>
 #include <PubSubClient.h>
 
+// Define the maximum length of the MAC address
+const int MAX_MAC_LENGTH = 18;  // For example, a MAC address is usually 17 characters long (including colons) plus 1 for null terminator
 
-// Struc for transmiting sensor data
+// Struc for transmitting sensor data
 struct SensorData {
-  uint8_t rootNodeAddress;
+  // uint8_t rootNodeAddress;
+  char MACaddr[MAX_MAC_LENGTH];  // Use a char array to store the MAC address
   float c02Data;
   float temperatureData;
-  float thirdValue;
+  float humidityData;
 };
+
 
 // Connection Request Struct
 struct Handshake {
@@ -27,14 +31,11 @@ Handshake msg;
 esp_now_peer_info_t peerInfo = {};
 esp_now_peer_num_t peer_num;
 
-
-
 // Maximum number of nodes in the network
 #define MAX_NODES 10
 
 // Global variable to track if the current node is connected to the master
-uint8_t isConnectedToMaster = 0;
-
+uint8_t isConnectedToMaster = 1;
 
 void formatMacAddress(const uint8_t *macAddr, char *buffer, int maxLength)
 // Formats MAC Address
@@ -66,7 +67,7 @@ void sendToAllPeers(const SensorData &sensorData)
 // Send the message to each peer in the peer list
 {
   esp_now_get_peer_num(&peer_num);
-  Serial.println("Sending....");
+  // Serial.println("Sending....");
   for (int i = 0; i < peer_num.total_num; i++) {
     // Format the MAC address
     char macStr[18];
@@ -89,30 +90,20 @@ void sendToAllPeers(const SensorData &sensorData)
   }
 }
 
-
-void receiveCallback(const uint8_t *macAddr, const uint8_t *data, int dataLen)
-// Called when data is received
-{
+void receiveCallback(const uint8_t *macAddr, const uint8_t *data, int dataLen) {
   // Format the MAC address
   char macStr[18];
   formatMacAddress(macAddr, macStr, 18);
 
-  // when sensor data received
+  // When sensor data received
   if (dataLen == sizeof(SensorData)) {
-    Serial.println("Sensor Data received");
     // Message is sensor data from peer nodes
     SensorData receivedData;
     memcpy(&receivedData, data, sizeof(SensorData));
 
-    // Print the received sensor data
-    Serial.printf("Received sensor data from: %s\n", macStr);
-    Serial.printf("Root Node Address: %d\n", receivedData.rootNodeAddress);
-    Serial.printf("CO2 Data: %.2f\n", receivedData.c02Data);
-    Serial.printf("Temperature Data: %.2f\n", receivedData.temperatureData);
-    Serial.printf("Third Value: %.2f\n", receivedData.thirdValue);
+    // Print the received sensor data including MAC address
+    Serial.printf("%s,%.2f,%.2f,%.2f\n", receivedData.MACaddr, receivedData.c02Data, receivedData.temperatureData, receivedData.humidityData);
 
-    // Send the message to all peers in the peer list
-    sendToAllPeers(receivedData);
   } else if (dataLen == sizeof(Handshake)) {
     Serial.println("Handshake received");
     // Message is a handshake message
@@ -168,10 +159,14 @@ void receiveCallback(const uint8_t *macAddr, const uint8_t *data, int dataLen)
         Serial.printf("Node %s is NOT CONNECTED to master\n", macStr);
       }
     }
-
-
   } else {
     Serial.println("Received data length does not match expected formats");
+    Serial.print("Received data: ");
+    for (int i = 0; i < dataLen; i++) {
+      Serial.print(data[i], HEX);  // Print each byte of data in hexadecimal format
+      Serial.print(" ");
+    }
+    Serial.println();  // Print a newline after printing all bytes
   }
 }
 
@@ -224,17 +219,6 @@ void broadcast(const Handshake &msg)
     Serial.println("Unknown error");
   }
 }
-float getRandomFloat(float min, float max) {
-  // Generate a random floating-point number
-  float randomFloat = min + random() / ((float)RAND_MAX / (max - min));
-
-  // Convert the float to a string
-  // char buffer[10];                     // Adjust the size as needed
-  // dtostrf(randomFloat, 6, 2, buffer);  // Format the float with 6 total characters and 2 decimal places
-  // String floatString = String(buffer);
-
-  return randomFloat;
-}
 
 String getRandomFloatAsString(float min, float max) {
   // Generate a random floating-point number
@@ -255,14 +239,24 @@ void setup() {
   delay(1000);
 
   // Set ESP32 in STA mode to begin with
-  WiFi.mode(WIFI_STA);
+  WiFi.mode(WIFI_AP_STA);
   Serial.println("ESP-NOW Broadcast Demo");
 
   // Print MAC address
   Serial.print("MAC Address: ");
   Serial.println(WiFi.macAddress());
 
-  // Disconnect from WiFi
+  // WiFi.begin(ssid, password);
+
+  // while (WiFi.status() != WL_CONNECTED) {
+  //   delay(500);
+  //   Serial.print(".");
+  // }
+  // Serial.println(WiFi.localIP());
+  // WiFi.printDiag(Serial);
+
+  // client.setServer(mqtt_server, 1883);
+
   WiFi.disconnect();
 
   // Initialize ESP-NOW
@@ -270,27 +264,22 @@ void setup() {
     Serial.println("ESP-NOW Init Success");
     esp_now_register_recv_cb(receiveCallback);
     esp_now_register_send_cb(sentCallback);
-    // esp_now_register_send_cb(onDataSent);
   } else {
     Serial.println("ESP-NOW Init Failed");
     delay(3000);
     ESP.restart();
   }
-
-  // esp_wifi_set_promiscuous(true);
-  // esp_wifi_set_channel(13, WIFI_SECOND_CHAN_NONE);
-  // esp_wifi_set_promiscuous(false);
 }
 
 
 void loop() {
-  sensorData.rootNodeAddress = 0;
-  sensorData.c02Data = getRandomFloat(100.0, 1000.0);
-  sensorData.temperatureData = getRandomFloat(0.0, 40.0);
-  sensorData.thirdValue = getRandomFloat(90.0, 1030.0);
+  // sensorData.rootNodeAddress = 0;
+  // sensorData.c02Data = 20.0;
+  // sensorData.temperatureData = 20.0;
+  // sensorData.thirdValue = 20.0;
 
-  esp_now_get_peer_num(&peer_num);
-  Serial.printf("Peer num: %d\n", peer_num);
+  // esp_now_get_peer_num(&peer_num);
+  // Serial.printf("Peer num: %d\n", peer_num);
 
   // Print peers in peer list
   // Serial.println("Peers in Peer List:");
@@ -304,19 +293,22 @@ void loop() {
 
 
   // If there is no one in peerlist, do route discovery
-  if (peer_num.total_num == 0) {
-    Serial.println("Commencing route discovery");
-    // set msg header to request
-    msg.requestType = 0;
-    broadcast(msg);
-  }
-  // else send data to all in peer list
-  else {
-    Serial.println("Sending data to all peers");
-    sendToAllPeers(sensorData);
-  }
-
+  // if (peer_num.total_num == 0)
+  // {
+  //   Serial.println("Commencing route discovery");
+  //   // set msg header to request
+  //   msg.requestType = 0;
+  //   broadcast(msg);
+  // }
+  // // else send data to all in peer list
+  // else
+  // {
+  //   Serial.println("Sending data to all peers");
+  //   sendToAllPeers(sensorData);
+  // }
+  // client.loop();
+  // client.publish(SENSOR_DATA_TOPIC, "HELLO");
 
   // Delay for 5 seconds
-  delay(5000);
+  // delay(5000);
 }
