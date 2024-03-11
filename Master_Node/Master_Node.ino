@@ -9,11 +9,11 @@ const int MAX_MAC_LENGTH = 18;  // For example, a MAC address is usually 17 char
 
 // Struc for transmitting sensor data
 struct SensorData {
-  uint8_t rootNodeAddress;
+  // uint8_t rootNodeAddress;
   char MACaddr[MAX_MAC_LENGTH];  // Use a char array to store the MAC address
   float c02Data;
   float temperatureData;
-  float thirdValue;
+  float humidityData;
 };
 
 
@@ -102,32 +102,8 @@ void receiveCallback(const uint8_t *macAddr, const uint8_t *data, int dataLen) {
     memcpy(&receivedData, data, sizeof(SensorData));
 
     // Print the received sensor data including MAC address
-    Serial.printf("%s,%d,%.2f,%.2f,%.2f\n", receivedData.MACaddr, receivedData.rootNodeAddress, receivedData.c02Data, receivedData.temperatureData, receivedData.thirdValue);
+    Serial.printf("%s,%.2f,%.2f,%.2f\n", receivedData.MACaddr, receivedData.c02Data, receivedData.temperatureData, receivedData.humidityData);
 
-
-    // Send the message to all peers in the peer list
-    // sendToAllPeers(receivedData);
-
-    // DynamicJsonDocument doc(128);  // Adjust the size as needed
-
-    // // Populate the JSON object with sensor data
-    // doc["rootNodeAddress"] = receivedData.rootNodeAddress;
-    // doc["CO2Data"] = receivedData.c02Data;
-    // doc["temperatureData"] = receivedData.temperatureData;
-    // doc["thirdValue"] = receivedData.thirdValue;
-
-    // Convert the JSON object to a string
-    // String jsonString;
-    // serializeJson(doc, jsonString);
-
-    // // Print the JSON string
-    // Serial.println("Publishing JSON String:");
-    // Serial.println(jsonString);
-
-    // if (!client.publish(SENSOR_DATA_TOPIC, "HELLO")) {
-    //   // Print an error message if publish fails
-    //   Serial.println("Failed to publish MQTT message!");
-    // }
   } else if (dataLen == sizeof(Handshake)) {
     Serial.println("Handshake received");
     // Message is a handshake message

@@ -46,13 +46,13 @@ def main(broker_host, broker_port):
             fields = data.split(',')
 
             # Check if the data has the expected number of fields
-            if len(fields) != 5:
+            if len(fields) != 4:
                 print("Unexpected number of fields:", len(fields))
                 continue
 
             # Assuming fields are in the order: macStr, rootNodeAddress, c02Data, temperatureData, thirdValue
             try:
-                macStr, rootNodeAddress, c02Data, temperatureData, thirdValue = fields
+                macStr, c02Data, temperatureData, humidityData = fields
             except ValueError:
                 print("Error parsing data fields.")
                 continue
@@ -60,17 +60,16 @@ def main(broker_host, broker_port):
             # Create a dictionary to represent the data
             sensor_data = {
                 "macStr": macStr,
-                "rootNodeAddress": int(rootNodeAddress),
                 "c02Data": None,
                 "temperatureData": None,
-                "thirdValue": None
+                "humidityData": None
             }
 
             # Try to convert data to float, handle exceptions
             try:
                 sensor_data["c02Data"] = float(c02Data)
                 sensor_data["temperatureData"] = float(temperatureData)
-                sensor_data["thirdValue"] = float(thirdValue)
+                sensor_data["humidityData"] = float(humidityData)
             except ValueError:
                 print("Error converting data to float.")
                 continue

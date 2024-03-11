@@ -16,8 +16,8 @@
     },
     {
       "set": {
-        "field": "rootNodeAddress",
-        "value": "{{sensor_data.rootNodeAddress}}"
+        "field": "humidityData",
+        "value": "{{sensor_data.humidityData}}"
       }
     },
     {
@@ -31,12 +31,7 @@
         "field": "temperatureData",
         "value": "{{sensor_data.temperatureData}}"
       }
-    },
-    {
-      "set": {
-        "field": "thirdValue",
-        "value": "{{sensor_data.thirdValue}}"
-      }
     }
   ]
 }
+
