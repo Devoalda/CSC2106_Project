@@ -1,39 +1,42 @@
-[
-  {
-    "json": {
-      "field": "message",
-      "target_field": "sensor_data",
-      "ignore_failure": true
+{
+  "description": "Pipeline for processing sensor data from MQTT",
+  "processors": [
+    {
+      "json": {
+        "field": "message",
+        "target_field": "sensor_data",
+        "ignore_failure": true
+      }
+    },
+    {
+      "set": {
+        "field": "macStr",
+        "value": "{{sensor_data.macStr}}"
+      }
+    },
+    {
+      "set": {
+        "field": "rootNodeAddress",
+        "value": "{{sensor_data.rootNodeAddress}}"
+      }
+    },
+    {
+      "set": {
+        "field": "c02Data",
+        "value": "{{sensor_data.c02Data}}"
+      }
+    },
+    {
+      "set": {
+        "field": "temperatureData",
+        "value": "{{sensor_data.temperatureData}}"
+      }
+    },
+    {
+      "set": {
+        "field": "thirdValue",
+        "value": "{{sensor_data.thirdValue}}"
+      }
     }
-  },
-  {
-    "set": {
-      "field": "macStr",
-      "value": "{{sensor_data.macStr}}"
-    }
-  },
-  {
-    "set": {
-      "field": "rootNodeAddress",
-      "value": "{{sensor_data.rootNodeAddress}}"
-    }
-  },
-  {
-    "set": {
-      "field": "c02Data",
-      "value": "{{sensor_data.c02Data}}"
-    }
-  },
-  {
-    "set": {
-      "field": "temperatureData",
-      "value": "{{sensor_data.temperatureData}}"
-    }
-  },
-  {
-    "set": {
-      "field": "thirdValue",
-      "value": "{{sensor_data.thirdValue}}"
-    }
-  }
-]
+  ]
+}
