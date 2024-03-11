@@ -36,30 +36,55 @@ def main(broker_host, broker_port):
     try:
         while True:
             # Read data from serial port
-            data = ser.readline().decode().strip()
+            try:
+                data = ser.readline().decode().strip()
+            except UnicodeDecodeError:
+                print("Error decoding data from serial port.")
+                continue
 
             # Split data into fields
             fields = data.split(',')
 
+            # Check if the data has the expected number of fields
+            if len(fields) != 5:
+                print("Unexpected number of fields:", len(fields))
+                continue
+
             # Assuming fields are in the order: macStr, rootNodeAddress, c02Data, temperatureData, thirdValue
-            macStr, rootNodeAddress, c02Data, temperatureData, thirdValue = fields
+            try:
+                macStr, rootNodeAddress, c02Data, temperatureData, thirdValue = fields
+            except ValueError:
+                print("Error parsing data fields.")
+                continue
 
             # Create a dictionary to represent the data
             sensor_data = {
                 "macStr": macStr,
                 "rootNodeAddress": int(rootNodeAddress),
-                "c02Data": float(c02Data),
-                "temperatureData": float(temperatureData),
-                "thirdValue": float(thirdValue)
+                "c02Data": None,
+                "temperatureData": None,
+                "thirdValue": None
             }
+
+            # Try to convert data to float, handle exceptions
+            try:
+                sensor_data["c02Data"] = float(c02Data)
+                sensor_data["temperatureData"] = float(temperatureData)
+                sensor_data["thirdValue"] = float(thirdValue)
+            except ValueError:
+                print("Error converting data to float.")
+                continue
 
             # Convert dictionary to JSON string
             payload = json.dumps(sensor_data)
 
             # Publish data to MQTT broker
             topic = "sensor_data"
-            publish_data(client, topic, payload)
-            print("Data published:", payload)
+            try:
+                publish_data(client, topic, payload)
+                print("Data published:", payload)
+            except Exception as e:
+                print("Error publishing data:", e)
 
     except KeyboardInterrupt:
         print("Exiting...")

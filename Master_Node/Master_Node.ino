@@ -4,13 +4,18 @@
 #include <esp_now.h>
 #include <PubSubClient.h>
 
-// Struc for transmiting sensor data
+// Define the maximum length of the MAC address
+const int MAX_MAC_LENGTH = 18;  // For example, a MAC address is usually 17 characters long (including colons) plus 1 for null terminator
+
+// Struc for transmitting sensor data
 struct SensorData {
   uint8_t rootNodeAddress;
+  char MACaddr[MAX_MAC_LENGTH];  // Use a char array to store the MAC address
   float c02Data;
   float temperatureData;
   float thirdValue;
 };
+
 
 // Connection Request Struct
 struct Handshake {
@@ -85,31 +90,23 @@ void sendToAllPeers(const SensorData &sensorData)
   }
 }
 
-void receiveCallback(const uint8_t *macAddr, const uint8_t *data, int dataLen)
-// Called when data is received
-{
+void receiveCallback(const uint8_t *macAddr, const uint8_t *data, int dataLen) {
   // Format the MAC address
   char macStr[18];
   formatMacAddress(macAddr, macStr, 18);
 
-  // when sensor data received
+  // When sensor data received
   if (dataLen == sizeof(SensorData)) {
-    // Serial.println("Sensor Data received");
     // Message is sensor data from peer nodes
     SensorData receivedData;
     memcpy(&receivedData, data, sizeof(SensorData));
 
-    // Print the received sensor data
-    // Serial.printf("Received sensor data from: %s\n", macStr);
-    // Serial.printf("Root Node Address: %d\n", receivedData.rootNodeAddress);
-    // Serial.printf("CO2 Data: %.2f\n", receivedData.c02Data);
-    // Serial.printf("Temperature Data: %.2f\n", receivedData.temperatureData);
-    // Serial.printf("Third Value: %.2f\n", receivedData.thirdValue);
-    Serial.printf("%s,%d,%.2f,%.2f,%.2f\n", macStr, receivedData.rootNodeAddress, receivedData.c02Data, receivedData.temperatureData, receivedData.thirdValue);
+    // Print the received sensor data including MAC address
+    Serial.printf("%s,%d,%.2f,%.2f,%.2f\n", receivedData.MACaddr, receivedData.rootNodeAddress, receivedData.c02Data, receivedData.temperatureData, receivedData.thirdValue);
 
 
     // Send the message to all peers in the peer list
-    sendToAllPeers(receivedData);
+    // sendToAllPeers(receivedData);
 
     // DynamicJsonDocument doc(128);  // Adjust the size as needed
 
@@ -131,7 +128,6 @@ void receiveCallback(const uint8_t *macAddr, const uint8_t *data, int dataLen)
     //   // Print an error message if publish fails
     //   Serial.println("Failed to publish MQTT message!");
     // }
-
   } else if (dataLen == sizeof(Handshake)) {
     Serial.println("Handshake received");
     // Message is a handshake message
@@ -187,10 +183,14 @@ void receiveCallback(const uint8_t *macAddr, const uint8_t *data, int dataLen)
         Serial.printf("Node %s is NOT CONNECTED to master\n", macStr);
       }
     }
-
-
   } else {
     Serial.println("Received data length does not match expected formats");
+    Serial.print("Received data: ");
+    for (int i = 0; i < dataLen; i++) {
+      Serial.print(data[i], HEX);  // Print each byte of data in hexadecimal format
+      Serial.print(" ");
+    }
+    Serial.println();  // Print a newline after printing all bytes
   }
 }
 
