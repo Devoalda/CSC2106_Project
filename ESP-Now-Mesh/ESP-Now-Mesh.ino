@@ -37,16 +37,14 @@ char MACaddrG[MAX_MAC_LENGTH];  // Use a char array to store the MAC address
 
 esp_now_peer_info_t peerInfo = {};
 esp_now_peer_num_t peer_num;
+
+// Global variable to track if the current node is connected to the master
 uint8_t isConnectedToMaster = 0;
 uint8_t numberOfHopsToMaster = 0;
 
 
 // Maximum number of nodes in the network
 #define MAX_NODES 10
-
-// Global variable to track if the current node is connected to the master
-uint8_t isConnectedToMaster = 0;
-uint8_t numberOfHopsToMaster = 0;
 
 void formatMacAddress(const uint8_t *macAddr, char *buffer, int maxLength)
 // Formats MAC Address
