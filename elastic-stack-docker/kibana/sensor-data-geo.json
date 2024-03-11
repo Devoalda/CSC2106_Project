@@ -1,5 +1,5 @@
 {
-  "description": "Pipeline for processing sensor data from MQTT",
+  "description": "Pipeline for processing sensor data from MQTT with location data",
   "processors": [
     {
       "json": {
@@ -31,7 +31,12 @@
         "field": "temperatureData",
         "value": "{{sensor_data.temperatureData}}"
       }
+    },
+    {
+      "set": {
+        "field": "device-position",
+        "value": "{{sensor_data.latitude}},{{sensor_data.longitude}}"
+      }
     }
   ]
 }
-

@@ -20,6 +20,7 @@ struct SensorData {
   float temperatureData;
   float humidityData;
 };
+
 // Connection Request Struct
 struct Handshake {
   // 0 for request, 1 for reply

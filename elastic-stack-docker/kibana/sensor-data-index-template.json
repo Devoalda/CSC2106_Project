@@ -1,39 +1,35 @@
 {
-  "settings": {
-    "index": {
-      "codec": "best_compression",
-      "routing": {
-        "allocation": {
-          "include": {
-            "_tier_preference": "data_hot"
+  "template": {
+    "settings": {
+      "index": {
+        "codec": "best_compression",
+        "routing": {
+          "allocation": {
+            "include": {
+              "_tier_preference": "data_hot"
+            }
           }
-        }
-      },
-      "refresh_interval": "5s",
-      "number_of_shards": "1",
-      "number_of_replicas": "0"
-    }
-  },
-  "mappings": {
-    "dynamic": "true",
-    "dynamic_date_formats": [
-      "strict_date_optional_time",
-      "yyyy/MM/dd HH:mm:ss Z||yyyy/MM/dd Z"
-    ],
-    "dynamic_templates": [
-      {
-        "string_fields": {
-          "match": "*",
-          "match_mapping_type": "string",
-          "mapping": {
-            "norms": false,
-            "type": "keyword"
-          }
+        },
+        "refresh_interval": "5s",
+        "number_of_shards": "1",
+        "number_of_replicas": "0"
+      }
+    },
+    "mappings": {
+      "dynamic": "true",
+      "dynamic_date_formats": [
+        "strict_date_optional_time",
+        "yyyy/MM/dd HH:mm:ss Z||yyyy/MM/dd Z"
+      ],
+      "dynamic_templates": [],
+      "date_detection": true,
+      "numeric_detection": false,
+      "properties": {
+        "device-position": {
+          "type": "geo_point"
         }
       }
-    ],
-    "date_detection": true,
-    "numeric_detection": false
-  },
-  "aliases": {}
+    },
+    "aliases": {}
+  }
 }

@@ -23,6 +23,8 @@ struct Handshake {
   uint8_t requestType;
   // 1 if connected to master, 0 otherwise
   uint8_t isConnectedToMaster;
+  // number of hops to master
+  uint8_t numberOfHopsToMaster;
 };
 
 // init global vars
