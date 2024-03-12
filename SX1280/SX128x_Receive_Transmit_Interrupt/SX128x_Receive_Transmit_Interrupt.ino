@@ -36,6 +36,6 @@ void setup() {
 
 
 void loop() {
-  loopESP();
-  // loopLoRa();
+  // loopESP();
+  loopLoRa();
 }
