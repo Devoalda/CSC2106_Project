@@ -122,6 +122,8 @@ void receiveCallback(const uint8_t *macAddr, const uint8_t *data, int dataLen)
     Serial.printf("Temperature Data: %.2f\n", receivedData.temperatureData);
     Serial.printf("Humidity Data: %.2f\n", receivedData.humidityData);
 
+    // TODO: Needs to do sorting to send to peers that are alive in peer list with lowest numberOfHopsToMaster
+
     // Send the message to all peers in the peer list
     sendToAllPeers(receivedData);
   } else if (dataLen == sizeof(Handshake)) {
@@ -174,15 +176,14 @@ void receiveCallback(const uint8_t *macAddr, const uint8_t *data, int dataLen)
       // Reply type is 1, it's a reply containing connection status
       if (receivedMsg.isConnectedToMaster) {
         Serial.printf("Node %s is CONNECTED to the master\n", macStr);
-        // Set current node status
-        isConnectedToMaster = 1;
-        // Set current hop count to master
-        numberOfHopsToMaster = receivedMsg.numberOfHopsToMaster + 1;
-        Serial.printf("Hop Count: %d", numberOfHopsToMaster);
         // Add this node to peer list
         addPeerToPeerList(macAddr);
         isConnectedToMaster = receivedMsg.isConnectedToMaster;
         numberOfHopsToMaster = receivedMsg.numberOfHopsToMaster + 1;
+
+        //TODO: Maintain data structure containing peer mac address + numberOfHopsToMaster + alive state (set alive state of this peer to 1 since it just connected)
+
+
         Serial.printf("Hop Count: %d", numberOfHopsToMaster);
       } else {
         Serial.printf("Node %s is NOT CONNECTED to master\n", macStr);
@@ -195,7 +196,7 @@ void receiveCallback(const uint8_t *macAddr, const uint8_t *data, int dataLen)
   }
 }
 
-
+// Health Check function
 
 
 void sentCallback(const uint8_t *macAddr, esp_now_send_status_t status)
@@ -375,6 +376,8 @@ void setup() {
 void loop() {
   // Initialize sensor data structure
   SensorData sensorData;
+
+  // Perform Health Check
 
   // Read sensor data
   uint16_t error;
