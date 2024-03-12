@@ -57,3 +57,7 @@ void parseMacAddress(String macAddress, uint8_t *macAddressBytes) {
          &macAddressBytes[0], &macAddressBytes[1], &macAddressBytes[2],
          &macAddressBytes[3], &macAddressBytes[4], &macAddressBytes[5]);
 }
+
+int getRandomInt(int min, int max) {
+  return min + (rand() % (max - min + 1));
+}

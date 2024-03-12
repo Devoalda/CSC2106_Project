@@ -3,6 +3,8 @@
 // Define the maximum length of the MAC address
 const int MAX_MAC_LENGTH = 18;  // For example, a MAC address is usually 17 characters long (including colons) plus 1 for null terminator
 
+char selfAddr[MAX_MAC_LENGTH];
+
 // Struc for transmitting sensor data
 typedef struct SensorData {
   // uint8_t rootNodeAddress;
@@ -11,6 +13,7 @@ typedef struct SensorData {
   float c02Data;
   float temperatureData;
   float humidityData;
+  uint8_t randomNumber;
 } SensorData;
 
 SensorData sensorData = {

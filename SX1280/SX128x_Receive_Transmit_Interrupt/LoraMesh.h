@@ -30,26 +30,22 @@ Consist of leaf nodes (this) and master node.
 #define DATA_MESSAGE 2
 #define DATA_REPLY_MESSAGE 3
 
-#define WAITING_THRESHOLD 10000
+#define WAITING_THRESHOLD 5000
 #define SENSOR_DATA_INTERVAL 10000
 
 SX1280 radio = new Module(RADIO_CS_PIN, RADIO_DIO1_PIN, RADIO_RST_PIN, RADIO_BUSY_PIN);
 
 // global timer
-unsigned long timer;
+unsigned long replyTimer;
+
+bool replyTimerFlag = false;
 
 unsigned long sensorTimer;
 
 volatile bool isolated = true;
 
-// flag to indicate that a sensor data packet to be sent
+// flag to indicate that a sensor data packet to be sent, for identifying the callback is triggered by transmit
 volatile bool txFlag = false;
-
-// flag to indicate waiting for route reply packet
-volatile bool waitForReply = false;
-
-// flag to indicate that a sensor data packet was received
-volatile bool rxFlag = false;
 
 // disable interrupt when it's not needed
 volatile bool enableInterrupt = true;
@@ -59,19 +55,12 @@ int selfLevel = 2147483647;
 
 typedef struct SensorDataReply {
   uint8_t requestType;
-  char MACaddr[MAX_MAC_LENGTH];
+  int randomNumber;  // from the data packet
 } SensorDataReply;
 
 SensorDataReply sdr = {
   .requestType = DATA_REPLY_MESSAGE
 };
-
-typedef struct Node {
-  char MACaddr[MAX_MAC_LENGTH];
-  Node* next;
-} Node;
-
-Node* addrList = NULL;
 
 typedef struct DiscoveryMessage {
   uint8_t requestType;
@@ -82,170 +71,152 @@ DiscoveryMessage dm = { DISCOVERY_MESSAGE };
 typedef struct DiscoveryReplyMessage {
   uint8_t requestType;
   int level;
-  char MACaddr[MAX_MAC_LENGTH];
+  char MACaddr[MAX_MAC_LENGTH];  // selfAddr
 } DiscoveryReplyMessage;
 
 DiscoveryReplyMessage drm;
 
-typedef struct QueueNode {
-  String data;
-  QueueNode* next;
-} QueueNode;
+template<typename T>
+class Queue {
+public:
+  struct Node {
+    T data;
+    Node* next;
+  };
 
-typedef struct Queue {
-  QueueNode* dataToSend;
-  QueueNode* dataReceived;
-} Queue;
+  Node* head = NULL;
 
-Queue queue;
+  void addToLast(T data) {
+    // Check if data already exists in the queue
+    Node* current = head;
+    while (current != NULL) {
+      if (current->data == data) {
+        // Data already exists, do not add
+        return;
+      }
+      current = current->next;
+    }
 
-void addDataToSend(String data) {
-  QueueNode* newNode = (QueueNode*)malloc(sizeof(QueueNode));
-  if (newNode == NULL) {
-    // Handle memory allocation failure
-    return;
+    // Data does not exist in the queue, add it
+    Node* newNode = new Node;
+    newNode->data = data;
+    newNode->next = NULL;
+
+    if (head == NULL) {
+      head = newNode;
+      return;
+    }
+
+    Node* last = head;
+    while (last->next != NULL) {
+      last = last->next;
+    }
+
+    last->next = newNode;
   }
 
-  newNode->data = data;
-  newNode->next = NULL;
+  void addToFirst(T data) {
+    // Check if data already exists in the queue
+    Node* current = head;
+    while (current != NULL) {
+      if (current->data == data) {
+        // Data already exists, do not add
+        return;
+      }
+      current = current->next;
+    }
 
-  if (queue.dataToSend == NULL) {
-    queue.dataToSend = newNode;
-    return;
+    // Data does not exist in the queue, add it
+    Node* newNode = new Node;
+    newNode->data = data;
+    newNode->next = head;
+    head = newNode;
   }
 
-  QueueNode* last = queue.dataToSend;
-  while (last->next != NULL) {
-    last = last->next;
+  void removeFromFirst() {
+    if (head == NULL) {
+      // The list is already empty
+      return;
+    }
+    Node* tempNode = head;
+    head = head->next;
+    delete tempNode;
   }
 
-  last->next = newNode;
-}
-
-void addDataReceived(String data) {
-  QueueNode* newNode = (QueueNode*)malloc(sizeof(QueueNode));
-  if (newNode == NULL) {
-    // Handle memory allocation failure
-    return;
+  bool isEmpty() {
+    return head == NULL;
   }
 
-  newNode->data = data;
-  newNode->next = NULL;
-
-  if (queue.dataReceived == NULL) {
-    queue.dataReceived = newNode;
-    return;
+  void clear() {
+    while (head != NULL) {
+      removeFromFirst();
+    }
   }
 
-  QueueNode* last = queue.dataReceived;
-  while (last->next != NULL) {
-    last = last->next;
+  bool removeIfMatches(std::function<bool(T)> condition) {
+    Node* current = head;
+    Node* prev = NULL;
+    while (current != NULL) {
+      if (condition(current->data)) {
+        if (prev == NULL) {
+          head = current->next;
+        } else {
+          prev->next = current->next;
+        }
+        delete current;
+        return true;
+      }
+      prev = current;
+      current = current->next;
+    }
+    return false;
   }
+};
 
-  last->next = newNode;
-}
-
-void removeDataToSend() {
-  if (queue.dataToSend == NULL) {
-    // The list is already empty
-    return;
-  }
-  QueueNode* tempNode = queue.dataToSend;
-  queue.dataToSend = queue.dataToSend->next;
-  free(tempNode);
-}
-
-void removeDataReceived() {
-  if (queue.dataReceived == NULL) {
-    // The list is already empty
-    return;
-  }
-  QueueNode* tempNode = queue.dataReceived;
-  queue.dataReceived = queue.dataReceived->next;
-  free(tempNode);
-}
-
-bool isQueueEmpty(QueueNode* head) {
-  return head == NULL;
-}
-
-bool isAddrListEmpty(Node* head) {
-  return head == NULL;
-}
-
-void addToAddrList(Node** head, char newMAC[MAX_MAC_LENGTH]) {
-  // Create a new node
-  Node* newNode = (Node*)malloc(sizeof(Node));
-  if (newNode == NULL) {
-    // Handle memory allocation failure
-    return;
-  }
-
-  // Copy the MAC address into the new node
-  for (int i = 0; i < MAX_MAC_LENGTH; i++) {
-    newNode->MACaddr[i] = newMAC[i];
-  }
-
-  // The new node is going to be the last node, so make its next as NULL
-  newNode->next = NULL;
-
-  // If the Linked List is empty, then make the new node as head
-  if (*head == NULL) {
-    *head = newNode;
-    return;
-  }
-
-  // Else traverse till the last node
-  Node* last = *head;
-  while (last->next != NULL) {
-    last = last->next;
-  }
-
-  // Change the next of last node
-  last->next = newNode;
-}  // addToAddrList
-
-void removeFromAddrList(Node** head) {
-  if (*head == NULL) {
-    // The list is already empty
-    return;
-  }
-  Node* tempNode = *head;  // Temporarily store the head node
-  *head = (*head)->next;   // Change head to the next node
-  free(tempNode);          // Free the old head node
-}  // removeFromAddrList
-
-void clearAddrList(Node** head) {
-  Node* current = *head;
-  Node* nextNode;
-
-  while (current != NULL) {
-    nextNode = current->next;  // Store reference to the next node
-    free(current);             // Free the current node
-    current = nextNode;        // Move to the next node
-  }
-
-  *head = NULL;  // After all nodes are deleted, head should be NULL
-}  // clearList
+Queue<String> dataToSend;
+Queue<String> dataReceived;
+Queue<String> dataSending;
+Queue<String> addrList;
 
 // this function is called when a complete packet
 // is received or sent by the module
 void setFlag(void) {
-  // check if the interrupt is enabled
-  if (!enableInterrupt) {
-    // TODO: store the received packet in queue
-    return;
+  // if not transmitting, means triggered by packet receiving
+  // if multiple packet is received at the same time when the later one
+  // is received before the prior one is read and stored, the later one
+  // will not be captured!
+  if (txFlag == false && enableInterrupt == true) {
+    enableInterrupt = false;
+    String receivedMsg;
+
+    int state = radio.readData(receivedMsg);
+
+    if (state == RADIOLIB_ERR_NONE) {
+      // if packet is of type DataReplyMessage or DiscoveryReplyMessage, add to first of dataReceived
+      if (receivedMsg.charAt(0) == '1' || receivedMsg.charAt(0) == '3') {
+        dataReceived.addToFirst(receivedMsg);
+      } else {
+        dataReceived.addToLast(receivedMsg);
+      }
+
+    } else if (state == RADIOLIB_ERR_CRC_MISMATCH) {
+      // packet was received, but is malformed
+      Serial.println(F("[SX1280] CRC error!"));
+
+    } else {
+      // some other error occurred
+      Serial.print(F("[SX1280] Failed, code "));
+      Serial.println(state);
+    }
+
+  } else if (txFlag == true) {
+    // end of sending
+    txFlag = false;
   }
 
-  // if not triggered by packet sending, means a packet is received
-  if (txFlag == false) {
-    rxFlag = true;
-  }
-
-  // if is triggered by packet sending, reset the flag
-  if (txFlag == true) {
-    txFlag == false;
-  }
+  // put module back to listen mode
+  radio.startReceive();
+  enableInterrupt = true;
 }  // setFlag
 
 String serializeSDRToString() {
@@ -253,21 +224,20 @@ String serializeSDRToString() {
 
   result.concat(sdr.requestType);
   result += ",";
-  result += sdr.MACaddr;  // the MACaddr of the received
+  result.concat(sdr.randomNumber);
 
   return result;
 }
 
-SensorDataReply deserializeStringToSDR(String serialized) {
+SensorDataReply deserializeStringToSDR(String* serialized) {
   SensorDataReply sdr;
-  int firstCommaIndex = serialized.indexOf(',');
+  int firstCommaIndex = serialized->indexOf(',');
 
   // Convert and assign requestType
-  sdr.requestType = (uint8_t)serialized.substring(0, firstCommaIndex).toInt();
+  sdr.requestType = (uint8_t)serialized->substring(0, firstCommaIndex).toInt();
 
-  // Assign MACaddr
-  String macAddrString = serialized.substring(firstCommaIndex + 1);
-  macAddrString.toCharArray(sdr.MACaddr, MAX_MAC_LENGTH);
+  // Convert and assign randomNumber
+  sdr.randomNumber = serialized->substring(firstCommaIndex + 1).toInt();
 
   return sdr;
 }
@@ -293,19 +263,19 @@ String serializeDRMToString() {
   return result;
 }
 
-DiscoveryReplyMessage deserializeStringToDRM(String serialized) {
+DiscoveryReplyMessage deserializeStringToDRM(String* serialized) {
   DiscoveryReplyMessage drm;
-  int firstCommaIndex = serialized.indexOf(',');
-  int secondCommaIndex = serialized.indexOf(',', firstCommaIndex + 1);
+  int firstCommaIndex = serialized->indexOf(',');
+  int secondCommaIndex = serialized->indexOf(',', firstCommaIndex + 1);
 
   // Convert and assign requestType
-  drm.requestType = (uint8_t)serialized.substring(0, firstCommaIndex).toInt();
+  drm.requestType = (uint8_t)serialized->substring(0, firstCommaIndex).toInt();
 
   // Convert and assign level
-  drm.level = serialized.substring(firstCommaIndex + 1, secondCommaIndex).toInt();
+  drm.level = serialized->substring(firstCommaIndex + 1, secondCommaIndex).toInt();
 
   // Assign MACaddr
-  String macAddrString = serialized.substring(secondCommaIndex + 1);
+  String macAddrString = serialized->substring(secondCommaIndex + 1);
   macAddrString.toCharArray(drm.MACaddr, MAX_MAC_LENGTH);
 
   return drm;
@@ -325,63 +295,72 @@ String serializeSensorDataToString() {
   result.concat(sensorData.temperatureData);
   result += ",";
   result.concat(sensorData.humidityData);
+  result += ",";
+  result.concat(sensorData.randomNumber);
 
   return result;
 }  // serializeSensorDataToString
 
-SensorData deserializeStringToSensorData(String serialized) {
+SensorData deserializeStringToSensorData(String* serialized) {
   SensorData sensorData;
-  int firstCommaIndex = serialized.indexOf(',');
-  int secondCommaIndex = serialized.indexOf(',', firstCommaIndex + 1);
-  int thirdCommaIndex = serialized.indexOf(',', secondCommaIndex + 1);
-  int fourthCommaIndex = serialized.indexOf(',', thirdCommaIndex + 1);
+  int firstCommaIndex = serialized->indexOf(',');
+  int secondCommaIndex = serialized->indexOf(',', firstCommaIndex + 1);
+  int thirdCommaIndex = serialized->indexOf(',', secondCommaIndex + 1);
+  int fourthCommaIndex = serialized->indexOf(',', thirdCommaIndex + 1);
+  int fifthCommaIndex = serialized->indexOf(',', fourthCommaIndex + 1);
 
   // Convert and assign requestType
-  sensorData.requestType = (uint8_t)serialized.substring(0, firstCommaIndex).toInt();
+  sensorData.requestType = (uint8_t)serialized->substring(0, firstCommaIndex).toInt();
 
   // Assign MACaddr
-  String macAddrString = serialized.substring(firstCommaIndex + 1, secondCommaIndex);
+  String macAddrString = serialized->substring(firstCommaIndex + 1, secondCommaIndex);
   macAddrString.toCharArray(sensorData.MACaddr, MAX_MAC_LENGTH);
 
   // Convert and assign c02Data
-  sensorData.c02Data = serialized.substring(secondCommaIndex + 1, thirdCommaIndex).toFloat();
+  sensorData.c02Data = serialized->substring(secondCommaIndex + 1, thirdCommaIndex).toFloat();
 
   // Convert and assign temperatureData
-  sensorData.temperatureData = serialized.substring(thirdCommaIndex + 1, fourthCommaIndex).toFloat();
+  sensorData.temperatureData = serialized->substring(thirdCommaIndex + 1, fourthCommaIndex).toFloat();
 
   // Convert and assign humidityData
-  sensorData.humidityData = serialized.substring(fourthCommaIndex + 1).toFloat();
+  sensorData.humidityData = serialized->substring(fourthCommaIndex + 1).toFloat();
+
+  sensorData.randomNumber = serialized->substring(fifthCommaIndex + 1).toFloat();
 
   return sensorData;
 }  // deserializeStringToSensorData
 
 void transmitData(String* data) {
-  // disable interrupt service routine while transmitting
-  enableInterrupt = false;
-
   // print a message to Serial to indicate transmission start
-  Serial.println(F("[SX1280] Transmitting packet..."));
+  Serial.println(F("Transmitting packet..."));
 
   // switch to transmit mode and send data
-  int state = radio.transmit(*data);
+  int state = radio.startTransmit(*data);
 
   if (state == RADIOLIB_ERR_NONE) {
+    txFlag = true;
+    // if data is of type SensorData or DiscoveryMessage, add to dataSending
+    if (data->charAt(0) == '0' || data->charAt(0) == '2') {
+      dataSending.addToLast(*data);
+      // set replyTimer to current time if not set
+      if (replyTimerFlag == false) {
+        replyTimer = millis();
+        replyTimerFlag = true;
+      }
+    }
     // successfully sent
-    Serial.println(F("[SX1280] Transmission successful!"));
+    Serial.println(F("Transmission init successful!"));
     Serial.println(*data);
   } else {
     // failed to send
-    Serial.print(F("[SX1280] Transmission failed, code "));
+    Serial.print(F("Transmission failed, code "));
     Serial.println(state);
   }
-
-  // after transmitting, switch back to receive mode
-  radio.startReceive();
 }  // transmitData
 
 void setupLoRa() {
   // initialize SX1280 with default settings
-  Serial.print(F("[SX1280] Initializing ... "));
+  Serial.print(F("LoRa Initializing ... "));
   int state = radio.begin();
 
   drm.requestType = DISCOVERY_REPLY_MESSAGE;
@@ -389,7 +368,7 @@ void setupLoRa() {
   if (u8g2) {
     if (state != RADIOLIB_ERR_NONE) {
       u8g2->clearBuffer();
-      u8g2->drawStr(0, 12, "Initializing: FAIL!");
+      u8g2->drawStr(0, 12, "LoRa Initializing: FAIL!");
       u8g2->sendBuffer();
     }
   }
@@ -447,7 +426,7 @@ void setupLoRa() {
   radio.setDio1Action(setFlag);
 
   // start listening for LoRa packets
-  Serial.print(F("[SX1280] Starting to listen ... "));
+  Serial.print(F("LoRa starting to listen ... "));
   state = radio.startReceive();
   if (state == RADIOLIB_ERR_NONE) {
     Serial.println(F("success!"));
@@ -459,129 +438,122 @@ void setupLoRa() {
   }
 }  // setupLoRa
 
-void processStringReceived(String str, String* msgToSend) {
-  Serial.println(F("[SX1280] Received packet!"));
+void processStringReceived(String* str) {
+  Serial.println(F("Process received packet!"));
 
   // print data of the packet
-  Serial.print(F("[SX1280] Data:\t\t"));
-  Serial.println(str);
+  Serial.print(F("Data:\t\t"));
+  Serial.println(*str);
   // check msg type by spliting the str and check the first int
-  int commaIndex = str.indexOf(',');              // Find the index of the first comma
-  String msgType = str.substring(0, commaIndex);  // Extract the substring from the beginning to the comma
+  int commaIndex = str->indexOf(',');              // Find the index of the first comma
+  String msgType = str->substring(0, commaIndex);  // Extract the substring from the beginning to the comma
   if (msgType == String(DISCOVERY_MESSAGE)) {
-    // reply with DISCOVERY_REPLY_MESSAGE if self isolated is false
+    // reply with DISCOVERY_REPLY_MESSAGE if self isolated is false, else do nothing
     if (isolated == false) {
-      *msgToSend = serializeDRMToString();
-      txFlag = true;
+      dataToSend.addToLast(serializeDRMToString());
     }
+    dataReceived.removeFromFirst();
   } else if (msgType == String(DISCOVERY_REPLY_MESSAGE)) {
     // if self isolated is true, update addrList and level
     if (isolated == true) {
+      // if timer is set, check if it's time to turn off isolated mode
+      // if it is, turn off isolated mode and update selfLevel
+      if (replyTimerFlag == true) {
+        unsigned long timeNow = millis();
+        if (timeNow - replyTimer >= WAITING_THRESHOLD) {
+          replyTimerFlag = false;
+          isolated = false;
+        }
+      }
+
       DiscoveryReplyMessage received = deserializeStringToDRM(str);
       // if received level is lower than selfLevel-1, update selfLevel
       if (received.level < selfLevel - 1) {
-        selfLevel = received.level - 1;
-        clearAddrList(&addrList);
-      } else if (received.level == selfLevel - 1) {
-        addToAddrList(&addrList, received.MACaddr);
+        selfLevel = received.level + 1;
+        addrList.clear();
       }
+      addrList.addToLast(String(received.MACaddr));
     }
+    dataReceived.removeFromFirst();
 
   } else if (msgType == String(DATA_MESSAGE)) {
     // if not isolated, forward the data message to the first addr in addrList
-    // if addrList is empty, set isolated to true and send DISCOVERY_MESSAGE
-    if (isAddrListEmpty(addrList)) {
-      isolated = true;
-    }
-
     if (isolated == false) {
       SensorData sd = deserializeStringToSensorData(str);
-      memcpy(sd.MACaddr, addrList->MACaddr, MAX_MAC_LENGTH);
-      *msgToSend = serializeSensorDataToString();
-      txFlag = true;
+      addrList.head->data = String(sd.MACaddr);
+      dataToSend.addToLast(serializeSensorDataToString());
+      dataReceived.removeFromFirst();
     } else {
-      timer = millis();
-      *msgToSend = serializeDMToString();
-      txFlag = true;
+      // move the first in dataReceived to the last
+      String data = dataReceived.head->data;
+      dataReceived.removeFromFirst();
+      dataReceived.addToLast(data);
     }
 
   } else if (msgType == String(DATA_REPLY_MESSAGE)) {
-    // if the mac address is not self address, ignore
-    // if the mac address is self address, set waitForReply to false
     SensorDataReply received = deserializeStringToSDR(str);
-    if (strcmp(received.MACaddr, sensorData.MACaddr) == 0) {
-      waitForReply = false;
-    }
-  }
+    // loop through dataSending to find the corresponding data
+    // if found, remove from dataSending
+    if (dataSending.isEmpty() == false) {
+      bool state = dataSending.removeIfMatches([received](String data) {
+        SensorData sd = deserializeStringToSensorData(&data);
+        return sd.randomNumber == received.randomNumber;
+      });
 
-  if (u8g2) {
-    u8g2->clearBuffer();
-    char buf[256];
-    u8g2->drawStr(0, 12, "Received OK!");
-    snprintf(buf, sizeof(buf), "Data:%s", str);
-    u8g2->drawStr(0, 26, buf);
-    u8g2->sendBuffer();
+      if (state == true) {
+        replyTimerFlag = false;
+      }
+    }
+    dataReceived.removeFromFirst();
   }
 }  // processStringReceived
 
 void loopLoRa() {
-  String msgToSend;
-
-  // check if the flag is set
-  if (rxFlag) {
-    // disable the interrupt service routine while
-    // processing the data
-    enableInterrupt = false;
-
-    // reset flag
-    rxFlag = false;
-
-    // you can read received data as an Arduino String
-    String str;
-    int state = radio.readData(str);
-
-    if (state == RADIOLIB_ERR_NONE) {
-      // packet was successfully received
-      processStringReceived(str, &msgToSend);
-
-    } else if (state == RADIOLIB_ERR_CRC_MISMATCH) {
-      // packet was received, but is malformed
-      Serial.println(F("[SX1280] CRC error!"));
-
-    } else {
-      // some other error occurred
-      Serial.print(F("[SX1280] Failed, code "));
-      Serial.println(state);
-    }
-
-    // put module back to listen mode
-    radio.startReceive();
-
-    // we're ready to receive more packets,
-    // enable interrupt service routine
-    enableInterrupt = true;
-  }
-
-  // TODO: check if there is any packet in the queue, if yes, process it
-
+  // regularly get the sensor data to send
   unsigned long timeNow = millis();
   if (timeNow >= sensorTimer + SENSOR_DATA_INTERVAL) {
     sensorTimer = timeNow;
     if (getSensorReading() == true) {
-      // TODO: add sensorData to queue instead
-      msgToSend = serializeSensorDataToString();
-      txFlag = true;
+      sensorData.randomNumber = getRandomInt(1000, 9999);
+      dataToSend.addToLast(serializeSensorDataToString());
     }
   }
 
-  if (txFlag) {
-    enableInterrupt = false;
+  // if timer is set, check if it's time
+  if (replyTimerFlag == true) {
+    if (timeNow - replyTimer >= WAITING_THRESHOLD) {
+      replyTimerFlag = false;
+    }
 
-    txFlag = false;  // reset the flag
+    // if dataSending is not empty, remove the first addr in addrList
+    // and move all data in dataSending to dataToSend
+    if (dataSending.isEmpty() == false) {
+      addrList.removeFromFirst();
+      while (dataSending.isEmpty() == false) {
+        dataToSend.addToLast(dataSending.head->data);
+        dataSending.removeFromFirst();
+      }
+    }
 
-    // call to transmit data
-    transmitData(&msgToSend);
-
-    enableInterrupt = true;
+    // check if addrList is empty, if it is, turn off isolated mode
+    if (addrList.isEmpty() == true) {
+      isolated = false;
+    } else {
+      isolated = true;
+      dataToSend.addToFirst(serializeDMToString());
+    }
   }
+
+  // if is not isolated, attempt to send data in queue
+  if (dataToSend.isEmpty() == false && isolated == false) {
+    String data = dataToSend.head->data;
+    transmitData(&data);
+  }
+
+  // regardless, process the data received in queue
+  if (dataReceived.isEmpty() == false) {
+    String data = dataReceived.head->data;
+    processStringReceived(&data);
+  }
+
 }  // loopLoRa

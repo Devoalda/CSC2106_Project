@@ -20,11 +20,10 @@ void setup() {
   uint8_t macAddressBytes[6];
   parseMacAddress(WiFi.macAddress(), macAddressBytes);
   // Format the MAC address and store it in sensorData.MACaddr
-  formatMacAddress(macAddressBytes, sensorData.MACaddr, MAX_MAC_LENGTH);
+  formatMacAddress(macAddressBytes, selfAddr, MAX_MAC_LENGTH);
   formatMacAddress(macAddressBytes, drm.MACaddr, MAX_MAC_LENGTH);
-  formatMacAddress(macAddressBytes, sdr.MACaddr, MAX_MAC_LENGTH);
 
-  Serial.println(sensorData.MACaddr);
+  Serial.println(selfAddr);
 
   // Disconnect from WiFi
   WiFi.disconnect();
