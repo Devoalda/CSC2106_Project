@@ -35,6 +35,9 @@
 #define BAT_ADC_PIN                 1
 #define BUTTON_PIN                  0
 
+// #define I2C_SDA                     46
+// #define I2C_SCL                     45
+
 // #define HAS_SDCARD
 #define HAS_DISPLAY
 
@@ -42,11 +45,15 @@
 #error "For the first use, please define the board version and model in <utilities. h>"
 #endif
 
+void formatMacAddress(const uint8_t *macAddr, char *buffer, int maxLength)
+// Formats MAC Address
+{
+  snprintf(buffer, maxLength, "%02x:%02x:%02x:%02x:%02x:%02x", macAddr[0], macAddr[1], macAddr[2], macAddr[3], macAddr[4], macAddr[5]);
+}
 
-
-
-
-
-
-
-
+// Function to parse a String MAC address to uint8_t array
+void parseMacAddress(String macAddress, uint8_t *macAddressBytes) {
+  sscanf(macAddress.c_str(), "%hhx:%hhx:%hhx:%hhx:%hhx:%hhx",
+         &macAddressBytes[0], &macAddressBytes[1], &macAddressBytes[2],
+         &macAddressBytes[3], &macAddressBytes[4], &macAddressBytes[5]);
+}
