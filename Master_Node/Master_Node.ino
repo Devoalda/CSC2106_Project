@@ -120,6 +120,7 @@ void receiveCallback(const uint8_t *macAddr, const uint8_t *data, int dataLen) {
       Handshake replyMsg;
       replyMsg.requestType = 1;
       replyMsg.isConnectedToMaster = isConnectedToMaster;
+      replyMsg.numberOfHopsToMaster = 0;
 
       memcpy(peerInfo.peer_addr, macAddr, 6);
       if (!esp_now_is_peer_exist(macAddr)) {
@@ -271,6 +272,8 @@ void setup() {
     delay(3000);
     ESP.restart();
   }
+
+  
 }
 
 
