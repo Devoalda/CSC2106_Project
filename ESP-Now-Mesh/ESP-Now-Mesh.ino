@@ -6,8 +6,18 @@
 #include <Arduino.h>
 #include <SensirionI2CScd4x.h>
 #include <Wire.h>
-// #include <esp_wifi.h>
+// #include <esp_wifi.h
 
+
+// Maximum number of nodes in the network
+#define MAX_NODES 10
+
+#define CONNECTION_ATTEMPTS_LIMIT 10
+#define CONNECTION_TIMEOUT 30000
+
+unsigned long connectionAttemptStartTime = 0;
+bool attemptingConnection = false;
+int numConnectionAttempts = 0;
 
 // Define the maximum length of the MAC address
 const int MAX_MAC_LENGTH = 18;  // For example, a MAC address is usually 17 characters long (including colons) plus 1 for null terminator
@@ -39,13 +49,10 @@ char MACaddrG[MAX_MAC_LENGTH];  // Use a char array to store the MAC address
 esp_now_peer_info_t peerInfo = {};
 esp_now_peer_num_t peer_num;
 
-// Global variable to track if the current node is connected to the master
+// Global variable to track if the current node is loopconnected to the master
 uint8_t isConnectedToMaster = 0;
 uint8_t numberOfHopsToMaster = 0;
-
-
-// Maximum number of nodes in the network
-#define MAX_NODES 10
+uint8_t healthCheckCount = 0;
 
 void formatMacAddress(const uint8_t *macAddr, char *buffer, int maxLength)
 // Formats MAC Address
@@ -181,10 +188,7 @@ void receiveCallback(const uint8_t *macAddr, const uint8_t *data, int dataLen)
         isConnectedToMaster = receivedMsg.isConnectedToMaster;
         numberOfHopsToMaster = receivedMsg.numberOfHopsToMaster + 1;
 
-        //TODO: Maintain data structure containing peer mac address + numberOfHopsToMaster + alive state (set alive state of this peer to 1 since it just connected)
-
-
-        Serial.printf("Hop Count: %d", numberOfHopsToMaster);
+        Serial.printf("Hop Count: %d\n", numberOfHopsToMaster);
       } else {
         Serial.printf("Node %s is NOT CONNECTED to master\n", macStr);
       }
@@ -371,13 +375,12 @@ void setup() {
     errorToString(error, errorMessage, 256);
     Serial.println(errorMessage);
   }
+
 }
 
 void loop() {
   // Initialize sensor data structure
   SensorData sensorData;
-
-  // Perform Health Check
 
   // Read sensor data
   uint16_t error;
@@ -445,6 +448,22 @@ void loop() {
     sendToAllPeers(sensorData);
   }
 
+  if (!isConnectedToMaster) {
+    if (!attemptingConnection) {
+        attemptingConnection = true;
+        connectionAttemptStartTime = millis();
+        numConnectionAttempts++;
+    } else if (millis() - connectionAttemptStartTime > CONNECTION_TIMEOUT || numConnectionAttempts > CONNECTION_ATTEMPTS_LIMIT) {
+        // Switch to LoRa here once rq is done (:
+        Serial.println("Switching to LoRa due to ESP-NOW connectivity issues.");
+        // Implement protocol switch logic here
+        attemptingConnection = false; // Reset attempt flag after switching protocol
+    }
+} else {
+    // Reset counters if a connection is established
+    attemptingConnection = false;
+    numConnectionAttempts = 0;
+}
 
   delay(3000);
 }
