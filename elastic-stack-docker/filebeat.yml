@@ -4,8 +4,10 @@ filebeat.inputs:
   paths:
     - ingest_data/*.log
 - type: mqtt
-  hosts: 
-    - tcp://mosquitto:1883
+  hosts:
+      - ssl://65719a9fe79c489a973fe650f76c8088.s1.eu.hivemq.cloud:8883
+  username: hivemq.webclient.1710319677860
+  password: "4130CFABGdbEace;i,.:"
   topics: 
     - sensor_data
   

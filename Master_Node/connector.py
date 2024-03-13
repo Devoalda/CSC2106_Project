@@ -5,14 +5,21 @@ import argparse
 import paho.mqtt.client as mqtt
 import json
 import random
+import configparser
+
+# Load configuration from config file
+config = configparser.ConfigParser()
+config.read('config.ini')
 
 # MQTT Broker Settings
-DEFAULT_BROKER_HOST = "localhost"
-DEFAULT_BROKER_PORT = 1883
+DEFAULT_BROKER_HOST = config.get('mqtt', 'broker_host')
+DEFAULT_BROKER_PORT = config.getint('mqtt', 'broker_port')
+username = config.get('mqtt', 'username')
+password = config.get('mqtt', 'password')
 
 # Serial Port Settings
 SERIAL_PORT = '/dev/ttyACM0'  # Adjust this to match your serial port
-BAUD_RATE = 9600  # Adjust this to match your baud rate
+BAUD_RATE = 115200  # Adjust this to match your baud rate
 
 # Predefined list of latitude and longitude coordinates
 locations = [
@@ -40,8 +47,10 @@ def generate_location_data():
 
 def main(broker_host, broker_port):
     # Initialize MQTT client
-    client = mqtt.Client(client_id="sensor_data_publisher")
+    client = mqtt.Client(client_id="", userdata=None, protocol=mqtt.MQTTv5)
     client.on_connect = on_connect
+    client.tls_set(tls_version=mqtt.ssl.PROTOCOL_TLS)
+    client.username_pw_set(username, password)
 
     # Connect to MQTT broker
     client.connect(broker_host, broker_port)
