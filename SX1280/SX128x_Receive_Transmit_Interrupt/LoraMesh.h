@@ -31,16 +31,14 @@ Consist of leaf nodes (this) and master node.
 #define DATA_REPLY_MESSAGE 3
 
 #define WAITING_THRESHOLD 5000
-#define SENSOR_DATA_INTERVAL 10000
+#define SENSOR_DATA_INTERVAL 5000
 
 SX1280 radio = new Module(RADIO_CS_PIN, RADIO_DIO1_PIN, RADIO_RST_PIN, RADIO_BUSY_PIN);
 
 // global timer
-unsigned long replyTimer;
+volatile unsigned long replyTimer;
 
-bool replyTimerFlag = false;
-
-unsigned long sensorTimer;
+volatile bool replyTimerFlag = false;
 
 volatile bool isolated = true;
 
@@ -50,8 +48,11 @@ volatile bool txFlag = false;
 // disable interrupt when it's not needed
 volatile bool enableInterrupt = true;
 
+// flag to indicate to call radio.startReceive()
+volatile bool rxFlag = false;
+
 // initiate to max integer value, to be set after discovery
-int selfLevel = 2147483647;
+volatile int selfLevel = 2147483647;
 
 typedef struct SensorDataReply {
   uint8_t requestType;
@@ -195,8 +196,12 @@ void setFlag(void) {
       // if packet is of type DataReplyMessage or DiscoveryReplyMessage, add to first of dataReceived
       if (receivedMsg.charAt(0) == '1' || receivedMsg.charAt(0) == '3') {
         dataReceived.addToFirst(receivedMsg);
+        Serial.print("Putting msg at the HEAD of dataReceived queue: ");
+        Serial.println(receivedMsg);
       } else {
         dataReceived.addToLast(receivedMsg);
+        Serial.print("Putting msg at the TAIL of dataReceived queue: ");
+        Serial.println(receivedMsg);
       }
 
     } else if (state == RADIOLIB_ERR_CRC_MISMATCH) {
@@ -208,15 +213,16 @@ void setFlag(void) {
       Serial.print(F("[SX1280] Failed, code "));
       Serial.println(state);
     }
-
+    rxFlag = true;
+    enableInterrupt = true;
   } else if (txFlag == true) {
     // end of sending
     txFlag = false;
+    rxFlag = true;
+    Serial.println("Message sending completed");
+  } else {
+    return;
   }
-
-  // put module back to listen mode
-  radio.startReceive();
-  enableInterrupt = true;
 }  // setFlag
 
 String serializeSDRToString() {
@@ -331,8 +337,20 @@ SensorData deserializeStringToSensorData(String* serialized) {
 }  // deserializeStringToSensorData
 
 void transmitData(String* data) {
-  // print a message to Serial to indicate transmission start
   Serial.println(F("Transmitting packet..."));
+
+  // if its isolated and not sending the discovery message
+  if (isolated == true && data->charAt(0) != '0') {
+    // put the message to the back
+    // dataToSend.removeFromFirst();
+    // dataToSend.addToLast(*data);
+    // Serial.print("Moved msg from HEAD to TAIL of dataToSend Queue: ");
+    // Serial.println(*data);
+    Serial.println("isolated, message not Discovery Message, do nothing");
+    return;
+  }
+
+
 
   // switch to transmit mode and send data
   int state = radio.startTransmit(*data);
@@ -342,15 +360,20 @@ void transmitData(String* data) {
     // if data is of type SensorData or DiscoveryMessage, add to dataSending
     if (data->charAt(0) == '0' || data->charAt(0) == '2') {
       dataSending.addToLast(*data);
+      Serial.print("Putting msg at the TAIL of dataSending queue: ");
+      Serial.println(*data);
+
       // set replyTimer to current time if not set
       if (replyTimerFlag == false) {
         replyTimer = millis();
         replyTimerFlag = true;
+        Serial.println("Set replyTimerFlag to TRUE");
       }
     }
     // successfully sent
-    Serial.println(F("Transmission init successful!"));
-    Serial.println(*data);
+    dataToSend.removeFromFirst();
+    Serial.println(F("Transmission init successful! remove from dataToSendQueue"));
+
   } else {
     // failed to send
     Serial.print(F("Transmission failed, code "));
@@ -439,58 +462,64 @@ void setupLoRa() {
 }  // setupLoRa
 
 void processStringReceived(String* str) {
-  Serial.println(F("Process received packet!"));
-
-  // print data of the packet
-  Serial.print(F("Data:\t\t"));
+  Serial.print(F("Process received msg: "));
   Serial.println(*str);
+
   // check msg type by spliting the str and check the first int
   int commaIndex = str->indexOf(',');              // Find the index of the first comma
   String msgType = str->substring(0, commaIndex);  // Extract the substring from the beginning to the comma
   if (msgType == String(DISCOVERY_MESSAGE)) {
+    Serial.println("Message is DISCOVERY_MESSAGE");
     // reply with DISCOVERY_REPLY_MESSAGE if self isolated is false, else do nothing
     if (isolated == false) {
       dataToSend.addToLast(serializeDRMToString());
+      Serial.println("Self is not isolated, add discovery reply message to queue");
     }
     dataReceived.removeFromFirst();
+    Serial.println("DISCOVERY_MESSAGE processed, remove from dataReceived queue");
   } else if (msgType == String(DISCOVERY_REPLY_MESSAGE)) {
+    Serial.println("Message is DISCOVERY_REPLY_MESSAGE");
     // if self isolated is true, update addrList and level
-    if (isolated == true) {
-      // if timer is set, check if it's time to turn off isolated mode
-      // if it is, turn off isolated mode and update selfLevel
-      if (replyTimerFlag == true) {
-        unsigned long timeNow = millis();
-        if (timeNow - replyTimer >= WAITING_THRESHOLD) {
-          replyTimerFlag = false;
-          isolated = false;
-        }
-      }
+    DiscoveryReplyMessage received = deserializeStringToDRM(str);
 
-      DiscoveryReplyMessage received = deserializeStringToDRM(str);
-      // if received level is lower than selfLevel-1, update selfLevel
-      if (received.level < selfLevel - 1) {
-        selfLevel = received.level + 1;
-        addrList.clear();
-      }
-      addrList.addToLast(String(received.MACaddr));
+    // if received level is lower than selfLevel-1, update selfLevel
+    if (received.level < selfLevel - 1) {
+      selfLevel = received.level + 1;
+      addrList.clear();
+      Serial.print("adjust self level to ");
+      Serial.print(selfLevel);
+      Serial.println(", clear the addrList");
     }
+    addrList.addToLast(String(received.MACaddr));
+    Serial.println("added address to addrList (if not exist): ");
+    Serial.println(String(received.MACaddr));
+
+    isolated = false;
+    Serial.println("Set isolation to FALSE");
+
+    replyTimerFlag = false;
+    Serial.println("Set replyTimerFlag to false");
+
     dataReceived.removeFromFirst();
+    Serial.println("Discovery Reply Message processed, remove from dataReceived queue");
 
   } else if (msgType == String(DATA_MESSAGE)) {
+    Serial.println("Message is DATA_MESSAGE");
     // if not isolated, forward the data message to the first addr in addrList
     if (isolated == false) {
       SensorData sd = deserializeStringToSensorData(str);
       addrList.head->data = String(sd.MACaddr);
       dataToSend.addToLast(serializeSensorDataToString());
       dataReceived.removeFromFirst();
+      Serial.println("Self not isolated, add to dataToSend queue and remove from dataReceived queue");
     } else {
       // move the first in dataReceived to the last
-      String data = dataReceived.head->data;
-      dataReceived.removeFromFirst();
-      dataReceived.addToLast(data);
+      return;
+      Serial.println("Data Message received but self is isolated, do nothing");
     }
 
   } else if (msgType == String(DATA_REPLY_MESSAGE)) {
+    Serial.println("Message is DATA_REPLY_MESSAGE");
     SensorDataReply received = deserializeStringToSDR(str);
     // loop through dataSending to find the corresponding data
     // if found, remove from dataSending
@@ -502,50 +531,77 @@ void processStringReceived(String* str) {
 
       if (state == true) {
         replyTimerFlag = false;
+        Serial.println("Found record, clear replyFlag and remove from dataSending queue");
       }
     }
     dataReceived.removeFromFirst();
+    Serial.println("DATA_REPLY_MESSAGE processed and removed from dataReceived queue");
   }
 }  // processStringReceived
 
 void loopLoRa() {
+  if (rxFlag == true) {
+    rxFlag = false;
+    int state = radio.startReceive();
+    if (state == RADIOLIB_ERR_NONE) {
+      Serial.println(F("success!"));
+    } else {
+      Serial.print(F("failed, code "));
+      Serial.println(state);
+      while (true)
+        ;
+    }
+  }
+
   // regularly get the sensor data to send
   unsigned long timeNow = millis();
-  if (timeNow >= sensorTimer + SENSOR_DATA_INTERVAL) {
+  static unsigned long sensorTimer = 0;
+  if (timeNow - sensorTimer >= SENSOR_DATA_INTERVAL) {
+    Serial.println("Attempt to get sensor data");
     sensorTimer = timeNow;
     if (getSensorReading() == true) {
       sensorData.randomNumber = getRandomInt(1000, 9999);
       dataToSend.addToLast(serializeSensorDataToString());
+      Serial.println("Add sensor data to dataToSend queue");
     }
   }
 
   // if timer is set, check if it's time
   if (replyTimerFlag == true) {
+    Serial.println("Waiting for some reply");
+
     if (timeNow - replyTimer >= WAITING_THRESHOLD) {
       replyTimerFlag = false;
-    }
+      Serial.println("replyTimer timeout");
 
-    // if dataSending is not empty, remove the first addr in addrList
-    // and move all data in dataSending to dataToSend
-    if (dataSending.isEmpty() == false) {
       addrList.removeFromFirst();
+      Serial.println("Remove an addr from addrList");
+      // remove discovery message from dataSending
+      dataSending.removeIfMatches([](String data) {
+        return data.charAt(0) == '0';
+      });
+      Serial.println("Remove discovery message from dataSending queue");
       while (dataSending.isEmpty() == false) {
         dataToSend.addToLast(dataSending.head->data);
         dataSending.removeFromFirst();
       }
-    }
-
-    // check if addrList is empty, if it is, turn off isolated mode
-    if (addrList.isEmpty() == true) {
-      isolated = false;
-    } else {
-      isolated = true;
-      dataToSend.addToFirst(serializeDMToString());
+      Serial.println("Moce all messages in dataSending to dataToSend queue");
     }
   }
 
+  // check if addrList is empty, if it is, turn off isolated mode
+  if (addrList.isEmpty() == true && replyTimerFlag == false) {
+    isolated = true;
+    dataToSend.addToFirst(serializeDMToString());
+    Serial.println("addrList is empty, set isolated to TRUE");
+    Serial.println("Add Discovery Message to the HEAD of dataToSend queue");
+  } else if (addrList.isEmpty() == false) {
+    isolated = false;
+    Serial.println("addrList is not empty, set isolation to FALSE");
+  }
+
   // if is not isolated, attempt to send data in queue
-  if (dataToSend.isEmpty() == false && isolated == false) {
+  if (dataToSend.isEmpty() == false) {
     String data = dataToSend.head->data;
     transmitData(&data);
   }
@@ -555,5 +611,5 @@ void loopLoRa() {
     String data = dataReceived.head->data;
     processStringReceived(&data);
   }
-
+  delay(500);
 }  // loopLoRa
