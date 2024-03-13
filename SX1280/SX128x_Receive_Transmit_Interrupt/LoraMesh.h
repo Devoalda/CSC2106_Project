@@ -58,7 +58,7 @@ volatile int selfLevel = 2147483647;
 
 typedef struct SensorDataReply {
   uint8_t requestType;
-  int randomNumber;  // from the data packet
+  uint8_t randomNumber;  // from the data packet
 } SensorDataReply;
 
 SensorDataReply sdr = {
@@ -263,22 +263,22 @@ DiscoveryReplyMessage deserializeStringToDRM(String* serialized) {
   return drm;
 }
 
-String serializeSensorDataToString() {
+String serializeSensorDataToString(SensorData* data) {
   String result;
 
   // Concatenate integer and float values directly.
   // Use String constructor or concat() for conversion from numeric to String.
-  result.concat(sensorData.requestType);
+  result.concat(data->requestType);
   result += ",";  // Adding a separator for readability, can be omitted.
-  result += sensorData.MACaddr;
+  result += data->MACaddr;
   result += ",";
-  result.concat(sensorData.c02Data);
+  result.concat(data->c02Data);
   result += ",";
-  result.concat(sensorData.temperatureData);
+  result.concat(data->temperatureData);
   result += ",";
-  result.concat(sensorData.humidityData);
+  result.concat(data->humidityData);
   result += ",";
-  result.concat(sensorData.randomNumber);
+  result.concat(data->randomNumber);
 
   return result;
 }  // serializeSensorDataToString
@@ -484,14 +484,27 @@ void processStringReceived(String* str) {
     // if not isolated, forward the data message to the first addr in addrList
     if (isolated == false) {
       SensorData sd = deserializeStringToSensorData(str);
-      addrList.head->data = String(sd.MACaddr);
-      dataToSend.addToLast(serializeSensorDataToString());
+      // check if the MACaddr is self
+      if (strcmp(sd.MACaddr, sensorData.MACaddr) != 0) {
+        dataReceived.removeFromFirst();
+        Serial.println("Data Message received but self is the receiver, remove from dataReceived queue");
+        return;
+      }
+      // forward data msg
+      const char* addrChar = addrList.head->data.c_str();
+      strncpy(sd.MACaddr, addrChar, MAX_MAC_LENGTH);
+      dataToSend.addToLast(serializeSensorDataToString(&sd));
+
+      // reply data msg
+      sdr.randomNumber = sd.randomNumber;
+      dataToSend.addToLast(serializeSDRToString());
+
       dataReceived.removeFromFirst();
       Serial.println("Self not isolated, add to dataToSend queue and remove from dataReceived queue");
     } else {
       // move the first in dataReceived to the last
-      return;
       Serial.println("Data Message received but self is isolated, do nothing");
+      return;
     }
 
   } else if (msgType == String(DATA_REPLY_MESSAGE)) {
@@ -576,7 +589,7 @@ void loopLoRa() {
     sensorTimer = timeNow;
     if (getSensorReading() == true) {
       sensorData.randomNumber = getRandomInt(1000, 9999);
-      dataToSend.addToLast(serializeSensorDataToString());
+      dataToSend.addToLast(serializeSensorDataToString(&sensorData));
       Serial.println("Add sensor data to dataToSend queue");
     }
   }

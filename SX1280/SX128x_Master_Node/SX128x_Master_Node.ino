@@ -11,14 +11,13 @@
 
 #define DISCOVERY_DURATION 5000
 
-bool setup_complete = false;
-
 // flag to indicate that a sensor data packet to be sent, for identifying the callback is triggered by transmit
 volatile bool txFlag = false;
 
 // flag to indicate to call radio.startReceive()
 volatile bool rxFlag = false;
 
+// flag to indicate the transmittion is completed, set to true in setFlag
 volatile bool transmitted = false;
 
 // disable interrupt when it's not needed
@@ -29,7 +28,7 @@ int transmissionState = RADIOLIB_ERR_NONE;
 
 // Define the maximum length of the MAC address
 const int MAX_MAC_LENGTH = 18;
-char selfAddr[MAX_MAC_LENGTH];
+// char selfAddr[MAX_MAC_LENGTH];
 
 SX1280 radio = new Module(RADIO_CS_PIN, RADIO_DIO1_PIN, RADIO_RST_PIN, RADIO_BUSY_PIN);
 
@@ -38,6 +37,17 @@ typedef struct DiscoveryMessage {
 } DiscoveryMessage;
 
 DiscoveryMessage dm = { DISCOVERY_MESSAGE };
+
+typedef struct DiscoveryReplyMessage {
+  uint8_t requestType;
+  int level;
+  char MACaddr[MAX_MAC_LENGTH];  // selfAddr
+} DiscoveryReplyMessage;
+
+DiscoveryReplyMessage drm = {
+  .requestType = 1,
+  .level = 0
+};
 
 typedef struct SensorData {
   // uint8_t rootNodeAddress;
@@ -51,6 +61,15 @@ typedef struct SensorData {
 
 SensorData sensorData = {
   .requestType = 2
+};
+
+typedef struct SensorDataReply {
+  uint8_t requestType;
+  int randomNumber;  // from the data packet
+} SensorDataReply;
+
+SensorDataReply sdr = {
+  .requestType = DATA_REPLY_MESSAGE
 };
 
 unsigned long curr_time;
@@ -154,6 +173,7 @@ public:
 };
 
 Queue<String> dataReceived;
+Queue<String> dataToSend;
 
 String serializeSensorDataToString() {
   String result;
@@ -171,6 +191,28 @@ String serializeSensorDataToString() {
   result.concat(sensorData.humidityData);
   result += ",";
   result.concat(sensorData.randomNumber);
+
+  return result;
+}
+
+String serializeDRMToString() {
+  String result;
+
+  result.concat(drm.requestType);
+  result += ",";
+  result.concat(drm.level);
+  result += ",";
+  result += drm.MACaddr;
+
+  return result;
+}
+
+String serializeSDRToString() {
+  String result;
+
+  result.concat(sdr.requestType);
+  result += ",";
+  result.concat(sdr.randomNumber);
 
   return result;
 }
@@ -225,13 +267,13 @@ void setFlag(void) {
 }  // setFlag
 
 // Function to parse a String MAC address to uint8_t array
-void parseMacAddress(String macAddress, uint8_t *macAddressBytes) {
+void parseMacAddress(String macAddress, uint8_t* macAddressBytes) {
   sscanf(macAddress.c_str(), "%hhx:%hhx:%hhx:%hhx:%hhx:%hhx",
          &macAddressBytes[0], &macAddressBytes[1], &macAddressBytes[2],
          &macAddressBytes[3], &macAddressBytes[4], &macAddressBytes[5]);
 }
 
-void formatMacAddress(const uint8_t *macAddr, char *buffer, int maxLength)
+void formatMacAddress(const uint8_t* macAddr, char* buffer, int maxLength)
 // Formats MAC Address
 {
   snprintf(buffer, maxLength, "%02x:%02x:%02x:%02x:%02x:%02x", macAddr[0], macAddr[1], macAddr[2], macAddr[3], macAddr[4], macAddr[5]);
@@ -256,60 +298,48 @@ void processStringReceived(String* str) {
   int commaIndex = str->indexOf(',');              // Find the index of the first comma
   String msgType = str->substring(0, commaIndex);  // Extract the substring from the beginning to the comma
   if (msgType == String(DATA_MESSAGE)) {
+    Serial.println("Message is DATA_MESSAGE");
     // print data is dictated format in terminal
-    SensorData receivedData;
-    receivedData = deserializeStringToSensorData(str);
+    SensorData receivedData = deserializeStringToSensorData(str);
+    if (strcmp(receivedData.MACaddr, sensorData.MACaddr) != 0) {
+      dataReceived.removeFromFirst();
+      Serial.println("Data Message received but self is the receiver, remove from dataReceived queue");
+      return;
+    }
 
+    // TODO: send to server?
     Serial.printf("%s,%.2f,%.2f,%.2f\n", receivedData.MACaddr, receivedData.c02Data, receivedData.temperatureData, receivedData.humidityData);
 
+    // reply data msg
+    sdr.randomNumber = receivedData.randomNumber;
+    dataToSend.addToLast(serializeSDRToString());
+
     dataReceived.removeFromFirst();
+    Serial.println("Add to dataToSend queue and remove from dataReceived queue");
+  } else if (msgType == String(DISCOVERY_MESSAGE)) {
+    Serial.println("Message is DISCOVERY_MESSAGE");
+    dataToSend.addToLast(serializeDRMToString());
+    dataReceived.removeFromFirst();
+    Serial.println("Add discovery reply message to queue");
   }
 
 }  // processStringReceived
 
-float getRandomFloat(float min, float max) {
-  // Generate a random floating-point number
-  float randomFloat = min + random() / ((float)RAND_MAX / (max - min));
+void transmitData(String* data) {
+  Serial.println(F("Transmitting packet..."));
 
-  return randomFloat;
-}
+  // master node only sends Discovery reply or Data reply message
+  int state = radio.startTransmit(*data);
+  if (state == RADIOLIB_ERR_NONE) {
+    txFlag = true;
+    dataToSend.removeFromFirst();
+    Serial.println(F("Transmission init successful! remove from dataToSendQueue"));
 
-void transmitData (String data) {
-  // check if the previous transmission finished
-    if (txFlag) {
-        // disable the interrupt service routine while
-        // processing the data
-        enableInterrupt = false;
-
-        // reset flag
-        txFlag = false;
-
-        if (transmissionState == RADIOLIB_ERR_NONE) {
-            // packet was successfully sent
-            Serial.println(F("transmission finished!"));
-
-            // NOTE: when using interrupt-driven transmit method,
-            //       it is not possible to automatically measure
-            //       transmission data rate using getDataRate()
-
-        } else {
-            Serial.print(F("failed, code "));
-            Serial.println(transmissionState);
-        }
-
-        // wait a second before transmitting again
-        delay(2);
-
-        // send another one
-        Serial.println(F("[SX1280] Sending another packet ... "));
-
-        transmissionState = radio.startTransmit(data);
-        // transmissionState = radio.startTransmit("Hello Word!");
-
-        // we're ready to send more packets,
-        // enable interrupt service routine
-        enableInterrupt = true;
-    }
+  } else {
+    // failed to send
+    Serial.print(F("Transmission failed, code "));
+    Serial.println(state);
+  }
 }
 
 void setupLoRa() {
@@ -378,11 +408,11 @@ void setupLoRa() {
   radio.setDio1Action(setFlag);
 
   // start transmitting the first packet
-    Serial.print(F("[SX1280] Sending first packet ... "));
+  Serial.print(F("[SX1280] Sending first packet ... "));
 
-    // you can transmit C-string or Arduino string up to
-    // 256 characters long
-    transmissionState = radio.startTransmit("Hello World!");
+  // you can transmit C-string or Arduino string up to
+  // 256 characters long
+  transmissionState = radio.startTransmit("Hello World!");
 
 }  // setupLoRa
 
@@ -403,10 +433,10 @@ void setup() {
   uint8_t macAddressBytes[6];
   parseMacAddress(WiFi.macAddress(), macAddressBytes);
   // Format the MAC address and store it in sensorData.MACaddr
-  formatMacAddress(macAddressBytes, selfAddr, MAX_MAC_LENGTH);
-  // formatMacAddress(macAddressBytes, drm.MACaddr, MAX_MAC_LENGTH);
+  // formatMacAddress(macAddressBytes, selfAddr, MAX_MAC_LENGTH);
+  formatMacAddress(macAddressBytes, drm.MACaddr, MAX_MAC_LENGTH);
 
-  Serial.println(selfAddr);
+  Serial.println(drm.MACaddr);
 
   // Disconnect from WiFi
   WiFi.disconnect();
@@ -417,35 +447,72 @@ void setup() {
 }
 
 void loop() {
+  if (rxFlag == true) {
+    String receivedMsg;
+
+    int state = radio.readData(receivedMsg);
+
+    if (state == RADIOLIB_ERR_NONE) {
+      dataReceived.addToLast(receivedMsg);
+      Serial.print("Putting msg at the TAIL of dataReceived queue: ");
+      Serial.println(receivedMsg);
+    } else if (state == RADIOLIB_ERR_CRC_MISMATCH) {
+      // packet was received, but is malformed
+      Serial.println(F("[SX1280] CRC error!"));
+
+    } else {
+      // some other error occurred
+      Serial.print(F("[SX1280] Failed, code "));
+      Serial.println(state);
+    }
+    // start listending again
+    state = radio.startReceive();
+    if (state == RADIOLIB_ERR_NONE) {
+      Serial.println(F("success!"));
+    } else {
+      Serial.print(F("failed, code "));
+      Serial.println(state);
+      while (true)
+        ;
+    }
+    rxFlag = false;
+    enableInterrupt = true;
+  }
+
+  if (transmitted == true) {
+    transmitted = false;
+    int state = radio.startReceive();
+    if (state == RADIOLIB_ERR_NONE) {
+      Serial.println(F("success!"));
+    } else {
+      Serial.print(F("failed, code "));
+      Serial.println(state);
+      while (true)
+        ;
+    }
+  }
+
   //Loop Transmit
   curr_time = millis();
-  Serial.println(curr_time-prev_time);
+  Serial.println(curr_time - prev_time);
   //Start Discovery
-  if (curr_time-prev_time < DISCOVERY_DURATION) {
+  if (curr_time - prev_time < DISCOVERY_DURATION) {
     // Broadcast Discovery Packet
     Serial.println("Send Discovery");
-    transmitData(serializeDMToString());
-
-  } 
-  
-  // Switch to listen for 
-  else {
-    // testing receive sample data received
-    strcpy(sensorData.MACaddr, "dc:54:75:e4:7e:75");
-    sensorData.c02Data = getRandomFloat(100.0, 1000.0);
-    sensorData.temperatureData = getRandomFloat(0.0, 40.0);
-    sensorData.humidityData = getRandomFloat(90.0, 1030.0);
-    String dataString = serializeSensorDataToString();
-    dataReceived.addToLast(dataString);
-
+    String discoveryMsg = serializeDMToString();
+    transmitData(&discoveryMsg);
+  } else {
     // regardless, process the data received in queue
     if (dataReceived.isEmpty() == false) {
       String data = dataReceived.head->data;
       processStringReceived(&data);
     }
 
-  } 
+    if (dataToSend.isEmpty() == false) {
+      String data = dataToSend.head->data;
+      transmitData(&data);
+    }
+  }
 
   delay(1000);
-
 }
