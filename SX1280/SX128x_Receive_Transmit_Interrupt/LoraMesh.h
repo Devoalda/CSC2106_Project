@@ -45,6 +45,8 @@ volatile bool isolated = true;
 // flag to indicate that a sensor data packet to be sent, for identifying the callback is triggered by transmit
 volatile bool txFlag = false;
 
+volatile bool transmitted = false;
+
 // disable interrupt when it's not needed
 volatile bool enableInterrupt = true;
 
@@ -188,37 +190,11 @@ void setFlag(void) {
   // will not be captured!
   if (txFlag == false && enableInterrupt == true) {
     enableInterrupt = false;
-    String receivedMsg;
-
-    int state = radio.readData(receivedMsg);
-
-    if (state == RADIOLIB_ERR_NONE) {
-      // if packet is of type DataReplyMessage or DiscoveryReplyMessage, add to first of dataReceived
-      if (receivedMsg.charAt(0) == '1' || receivedMsg.charAt(0) == '3') {
-        dataReceived.addToFirst(receivedMsg);
-        Serial.print("Putting msg at the HEAD of dataReceived queue: ");
-        Serial.println(receivedMsg);
-      } else {
-        dataReceived.addToLast(receivedMsg);
-        Serial.print("Putting msg at the TAIL of dataReceived queue: ");
-        Serial.println(receivedMsg);
-      }
-
-    } else if (state == RADIOLIB_ERR_CRC_MISMATCH) {
-      // packet was received, but is malformed
-      Serial.println(F("[SX1280] CRC error!"));
-
-    } else {
-      // some other error occurred
-      Serial.print(F("[SX1280] Failed, code "));
-      Serial.println(state);
-    }
     rxFlag = true;
-    enableInterrupt = true;
   } else if (txFlag == true) {
     // end of sending
     txFlag = false;
-    rxFlag = true;
+    transmitted = true;
     Serial.println("Message sending completed");
   } else {
     return;
@@ -541,7 +517,46 @@ void processStringReceived(String* str) {
 
 void loopLoRa() {
   if (rxFlag == true) {
+    String receivedMsg;
+
+    int state = radio.readData(receivedMsg);
+
+    if (state == RADIOLIB_ERR_NONE) {
+      // if packet is of type DataReplyMessage or DiscoveryReplyMessage, add to first of dataReceived
+      if (receivedMsg.charAt(0) == '1' || receivedMsg.charAt(0) == '3') {
+        dataReceived.addToFirst(receivedMsg);
+        Serial.print("Putting msg at the HEAD of dataReceived queue: ");
+        Serial.println(receivedMsg);
+      } else {
+        dataReceived.addToLast(receivedMsg);
+        Serial.print("Putting msg at the TAIL of dataReceived queue: ");
+        Serial.println(receivedMsg);
+      }
+
+    } else if (state == RADIOLIB_ERR_CRC_MISMATCH) {
+      // packet was received, but is malformed
+      Serial.println(F("[SX1280] CRC error!"));
+
+    } else {
+      // some other error occurred
+      Serial.print(F("[SX1280] Failed, code "));
+      Serial.println(state);
+    }
+    state = radio.startReceive();
+    if (state == RADIOLIB_ERR_NONE) {
+      Serial.println(F("success!"));
+    } else {
+      Serial.print(F("failed, code "));
+      Serial.println(state);
+      while (true)
+        ;
+    }
     rxFlag = false;
+    enableInterrupt = true;
+  }
+
+  if (transmitted == true) {
+    transmitted = false;
     int state = radio.startReceive();
     if (state == RADIOLIB_ERR_NONE) {
       Serial.println(F("success!"));
@@ -585,7 +600,7 @@ void loopLoRa() {
         dataToSend.addToLast(dataSending.head->data);
         dataSending.removeFromFirst();
       }
-      Serial.println("Moce all messages in dataSending to dataToSend queue");
+      Serial.println("Move all messages in dataSending to dataToSend queue");
     }
   }
 
