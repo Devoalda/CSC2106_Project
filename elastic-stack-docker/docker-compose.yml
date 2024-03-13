@@ -17,7 +17,7 @@ volumes:
 networks:
   default:
     name: elastic
-    external: true
+    external: false
 
 services:
   setup:
@@ -218,15 +218,3 @@ services:
       - ELASTIC_USER=elastic
       - ELASTIC_PASSWORD=${ELASTIC_PASSWORD}
       - ELASTIC_HOSTS=https://es01:9200
-
-  mosquitto:
-    image: eclipse-mosquitto
-    hostname: mosquitto
-    container_name: mosquitto
-    restart: unless-stopped
-    ports:
-      - "1883:1883"
-      - "9001:9001"
-    volumes:
-      - ./mosquitto:/etc/mosquitto
-      - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf
