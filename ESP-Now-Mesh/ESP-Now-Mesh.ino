@@ -280,9 +280,13 @@ String getRandomFloatAsString(float min, float max) {
   return floatString;
 }
 
+// Liligo
+// #define I2C_SDA 46
+// #define I2C_SCL 45
 
-#define I2C_SDA 46
-#define I2C_SCL 45
+// M5 
+#define I2C_SDA 26
+#define I2C_SCL 25
 
 SensirionI2CScd4x scd4x;
 
