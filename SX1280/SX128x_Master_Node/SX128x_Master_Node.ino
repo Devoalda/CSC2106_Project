@@ -28,7 +28,7 @@ int transmissionState = RADIOLIB_ERR_NONE;
 
 // Define the maximum length of the MAC address
 const int MAX_MAC_LENGTH = 18;
-// char selfAddr[MAX_MAC_LENGTH];
+char selfAddr[MAX_MAC_LENGTH];
 
 SX1280 radio = new Module(RADIO_CS_PIN, RADIO_DIO1_PIN, RADIO_RST_PIN, RADIO_BUSY_PIN);
 
@@ -37,17 +37,6 @@ typedef struct DiscoveryMessage {
 } DiscoveryMessage;
 
 DiscoveryMessage dm = { DISCOVERY_MESSAGE };
-
-typedef struct DiscoveryReplyMessage {
-  uint8_t requestType;
-  int level;
-  char MACaddr[MAX_MAC_LENGTH];  // selfAddr
-} DiscoveryReplyMessage;
-
-DiscoveryReplyMessage drm = {
-  .requestType = 1,
-  .level = 0
-};
 
 typedef struct SensorData {
   // uint8_t rootNodeAddress;
@@ -198,11 +187,11 @@ String serializeSensorDataToString() {
 String serializeDRMToString() {
   String result;
 
-  result.concat(drm.requestType);
+  result += "1";
   result += ",";
-  result.concat(drm.level);
+  result += "0";
   result += ",";
-  result += drm.MACaddr;
+  result += selfAddr;
 
   return result;
 }
@@ -301,7 +290,7 @@ void processStringReceived(String* str) {
     Serial.println("Message is DATA_MESSAGE");
     // print data is dictated format in terminal
     SensorData receivedData = deserializeStringToSensorData(str);
-    if (strcmp(receivedData.MACaddr, sensorData.MACaddr) != 0) {
+    if (strcmp(receivedData.MACaddr, selfAddr) != 0) {
       dataReceived.removeFromFirst();
       Serial.println("Data Message received but self is the receiver, remove from dataReceived queue");
       return;
@@ -321,12 +310,18 @@ void processStringReceived(String* str) {
     dataToSend.addToLast(serializeDRMToString());
     dataReceived.removeFromFirst();
     Serial.println("Add discovery reply message to queue");
+  } else {
+    // remove
+    dataReceived.removeFromFirst();
+    Serial.println("Received message cannot be recognised: ");
+    Serial.println(*str);
   }
 
 }  // processStringReceived
 
 void transmitData(String* data) {
   Serial.println(F("Transmitting packet..."));
+  Serial.println(*data);
 
   // master node only sends Discovery reply or Data reply message
   int state = radio.startTransmit(*data);
@@ -433,10 +428,9 @@ void setup() {
   uint8_t macAddressBytes[6];
   parseMacAddress(WiFi.macAddress(), macAddressBytes);
   // Format the MAC address and store it in sensorData.MACaddr
-  // formatMacAddress(macAddressBytes, selfAddr, MAX_MAC_LENGTH);
-  formatMacAddress(macAddressBytes, drm.MACaddr, MAX_MAC_LENGTH);
+  formatMacAddress(macAddressBytes, selfAddr, MAX_MAC_LENGTH);
 
-  Serial.println(drm.MACaddr);
+  Serial.println(selfAddr);
 
   // Disconnect from WiFi
   WiFi.disconnect();
@@ -492,27 +486,16 @@ void loop() {
     }
   }
 
-  //Loop Transmit
-  curr_time = millis();
-  Serial.println(curr_time - prev_time);
-  //Start Discovery
-  if (curr_time - prev_time < DISCOVERY_DURATION) {
-    // Broadcast Discovery Packet
-    Serial.println("Send Discovery");
-    String discoveryMsg = serializeDMToString();
-    transmitData(&discoveryMsg);
-  } else {
-    // regardless, process the data received in queue
-    if (dataReceived.isEmpty() == false) {
-      String data = dataReceived.head->data;
-      processStringReceived(&data);
-    }
-
-    if (dataToSend.isEmpty() == false) {
-      String data = dataToSend.head->data;
-      transmitData(&data);
-    }
+  // regardless, process the data received in queue
+  if (dataReceived.isEmpty() == false) {
+    String data = dataReceived.head->data;
+    processStringReceived(&data);
   }
 
-  delay(1000);
+  if (dataToSend.isEmpty() == false) {
+    String data = dataToSend.head->data;
+    transmitData(&data);
+  }
+
+  delay(500);
 }
