@@ -30,8 +30,8 @@ Consist of leaf nodes (this) and master node.
 #define DATA_MESSAGE 2
 #define DATA_REPLY_MESSAGE 3
 
-#define WAITING_THRESHOLD 10000
-#define SENSOR_DATA_INTERVAL 20000
+#define WAITING_THRESHOLD 2000
+#define SENSOR_DATA_INTERVAL 100000
 
 SX1280 radio = new Module(RADIO_CS_PIN, RADIO_DIO1_PIN, RADIO_RST_PIN, RADIO_BUSY_PIN);
 
@@ -410,28 +410,28 @@ void setupLoRa() {
   }
 
   // set carrier frequency to 2410.5 MHz
-  if (radio.setFrequency(2400.0) == RADIOLIB_ERR_INVALID_FREQUENCY) {
+  if (radio.setFrequency(2410.5) == RADIOLIB_ERR_INVALID_FREQUENCY) {
     Serial.println(F("Selected frequency is invalid for this module!"));
     while (true)
       ;
   }
 
   // set bandwidth to 203.125 kHz
-  if (radio.setBandwidth(203.125) == RADIOLIB_ERR_INVALID_BANDWIDTH) {
+  if (radio.setBandwidth(812.5) == RADIOLIB_ERR_INVALID_BANDWIDTH) {
     Serial.println(F("Selected bandwidth is invalid for this module!"));
     while (true)
       ;
   }
 
   // set spreading factor to 10
-  if (radio.setSpreadingFactor(10) == RADIOLIB_ERR_INVALID_SPREADING_FACTOR) {
+  if (radio.setSpreadingFactor(12) == RADIOLIB_ERR_INVALID_SPREADING_FACTOR) {
     Serial.println(F("Selected spreading factor is invalid for this module!"));
     while (true)
       ;
   }
 
   // set coding rate to 6
-  if (radio.setCodingRate(6) == RADIOLIB_ERR_INVALID_CODING_RATE) {
+  if (radio.setCodingRate(7) == RADIOLIB_ERR_INVALID_CODING_RATE) {
     Serial.println(F("Selected coding rate is invalid for this module!"));
     while (true)
       ;
@@ -487,6 +487,14 @@ void processStringReceived(String* str) {
     DiscoveryReplyMessage received = deserializeStringToDRM(str);
     Serial.println(*str);
 
+    // for debugging
+    // if (strcmp(received.MACaddr, "dc:54:75:e4:6d:50") == 0) {
+    //   dataReceived.removeFromFirst();
+    //   Serial.println("DEBUG: ignore this device");
+    //   return;
+    // }
+
+
     // if received level is lower than selfLevel-1, update selfLevel
     if (received.level <= selfLevel - 1) {
       if (received.level < selfLevel - 1) {
@@ -521,7 +529,7 @@ void processStringReceived(String* str) {
     // if not isolated, forward the data message to the first addr in addrList
     SensorData sd = deserializeStringToSensorData(str);
     // check if the MACaddr is self
-    if (strcmp(sd.MACaddr, sensorData.MACaddr) != 0) {
+    if (strcmp(sd.MACaddr, selfAddr) != 0) {
       dataReceived.removeFromFirst();
       Serial.println("Data Message received but self is the receiver, remove from dataReceived queue");
       return;
@@ -666,6 +674,7 @@ void loopLoRa() {
       u8g2->drawStr(0, 24, ("received: " + String(dataReceived.count)).c_str());
       u8g2->drawStr(0, 36, ("toSend: " + String(dataToSend.count)).c_str());
       u8g2->drawStr(0, 48, ("sending: " + String(dataSending.count)).c_str());
+      u8g2->drawStr(0, 60, ("level: " + String(selfLevel)).c_str());
       u8g2->sendBuffer();
     }
   } else if (addrList.isEmpty() == false) {

@@ -372,28 +372,28 @@ void setupLoRa() {
   }
 
   // set carrier frequency to 2410.5 MHz
-  if (radio.setFrequency(2400.0) == RADIOLIB_ERR_INVALID_FREQUENCY) {
+  if (radio.setFrequency(2410.5) == RADIOLIB_ERR_INVALID_FREQUENCY) {
     Serial.println(F("Selected frequency is invalid for this module!"));
     while (true)
       ;
   }
 
   // set bandwidth to 203.125 kHz
-  if (radio.setBandwidth(203.125) == RADIOLIB_ERR_INVALID_BANDWIDTH) {
+  if (radio.setBandwidth(812.5) == RADIOLIB_ERR_INVALID_BANDWIDTH) {
     Serial.println(F("Selected bandwidth is invalid for this module!"));
     while (true)
       ;
   }
 
   // set spreading factor to 10
-  if (radio.setSpreadingFactor(10) == RADIOLIB_ERR_INVALID_SPREADING_FACTOR) {
+  if (radio.setSpreadingFactor(12) == RADIOLIB_ERR_INVALID_SPREADING_FACTOR) {
     Serial.println(F("Selected spreading factor is invalid for this module!"));
     while (true)
       ;
   }
 
   // set coding rate to 6
-  if (radio.setCodingRate(6) == RADIOLIB_ERR_INVALID_CODING_RATE) {
+  if (radio.setCodingRate(7) == RADIOLIB_ERR_INVALID_CODING_RATE) {
     Serial.println(F("Selected coding rate is invalid for this module!"));
     while (true)
       ;
