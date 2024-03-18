@@ -9,8 +9,6 @@
 #define DATA_MESSAGE 2
 #define DATA_REPLY_MESSAGE 3
 
-#define DISCOVERY_DURATION 5000
-
 // flag to indicate that a sensor data packet to be sent, for identifying the callback is triggered by transmit
 volatile bool txFlag = false;
 
@@ -249,7 +247,7 @@ void setFlag(void) {
     // end of sending
     txFlag = false;
     transmitted = true;
-    Serial.println("Message sending completed");
+    // Serial.println("Message sending completed");
   } else {
     return;
   }
@@ -278,7 +276,7 @@ String serializeDMToString() {
 }
 
 void processStringReceived(String* str) {
-  Serial.println(F("Master received packet!"));
+  // Serial.println(F("Master received packet!"));
 
   // print data of the packet
   // Serial.print(F("Data:\t\t"));
@@ -287,53 +285,62 @@ void processStringReceived(String* str) {
   int commaIndex = str->indexOf(',');              // Find the index of the first comma
   String msgType = str->substring(0, commaIndex);  // Extract the substring from the beginning to the comma
   if (msgType == String(DATA_MESSAGE)) {
-    Serial.println("Message is DATA_MESSAGE");
+    // Serial.println("Message is DATA_MESSAGE");
     // print data is dictated format in terminal
     SensorData receivedData = deserializeStringToSensorData(str);
     if (strcmp(receivedData.MACaddr, selfAddr) != 0) {
       dataReceived.removeFromFirst();
-      Serial.println("Data Message received but self is the receiver, remove from dataReceived queue");
+      // Serial.println("Data Message received but self is the receiver, remove from dataReceived queue");
       return;
     }
 
     // TODO: send to server?
     Serial.printf("%s,%.2f,%.2f,%.2f\n", receivedData.MACaddr, receivedData.c02Data, receivedData.temperatureData, receivedData.humidityData);
 
+    if (u8g2) {
+      u8g2->clearBuffer();
+      u8g2->drawStr(0, 12, (String(receivedData.MACaddr)).c_str());
+      u8g2->drawStr(0, 24, ("CO2: " + String(receivedData.c02Data)).c_str());
+      u8g2->drawStr(0, 36, ("Temp: " + String(receivedData.temperatureData)).c_str());
+      u8g2->drawStr(0, 48, ("Humidity: " + String(receivedData.humidityData)).c_str());
+      u8g2->sendBuffer();
+    }
+
     // reply data msg
     sdr.randomNumber = receivedData.randomNumber;
     dataToSend.addToLast(serializeSDRToString());
 
     dataReceived.removeFromFirst();
-    Serial.println("Add to dataToSend queue and remove from dataReceived queue");
+    // Serial.println("Add to dataToSend queue and remove from dataReceived queue");
   } else if (msgType == String(DISCOVERY_MESSAGE)) {
-    Serial.println("Message is DISCOVERY_MESSAGE");
+    // Serial.println("Message is DISCOVERY_MESSAGE");
     dataToSend.addToLast(serializeDRMToString());
     dataReceived.removeFromFirst();
-    Serial.println("Add discovery reply message to queue");
+    // Serial.println("Add discovery reply message to queue");
   } else {
     // remove
     dataReceived.removeFromFirst();
-    Serial.println("Received message cannot be recognised: ");
-    Serial.println(*str);
+    // Serial.println("Received message cannot be recognised: ");
+    // Serial.println(*str);
   }
 
 }  // processStringReceived
 
 void transmitData(String* data) {
-  Serial.println(F("Transmitting packet..."));
-  Serial.println(*data);
+  // Serial.println(F("Transmitting packet..."));
+  // Serial.println(*data);
 
   // master node only sends Discovery reply or Data reply message
   int state = radio.startTransmit(*data);
   if (state == RADIOLIB_ERR_NONE) {
     txFlag = true;
     dataToSend.removeFromFirst();
-    Serial.println(F("Transmission init successful! remove from dataToSendQueue"));
+    // Serial.println(F("Transmission init successful! remove from dataToSendQueue"));
 
   } else {
     // failed to send
-    Serial.print(F("Transmission failed, code "));
-    Serial.println(state);
+    // Serial.print(F("Transmission failed, code "));
+    // Serial.println(state);
   }
 }
 
@@ -448,8 +455,8 @@ void loop() {
 
     if (state == RADIOLIB_ERR_NONE) {
       dataReceived.addToLast(receivedMsg);
-      Serial.print("Putting msg at the TAIL of dataReceived queue: ");
-      Serial.println(receivedMsg);
+      // Serial.print("Putting msg at the TAIL of dataReceived queue: ");
+      // Serial.println(receivedMsg);
     } else if (state == RADIOLIB_ERR_CRC_MISMATCH) {
       // packet was received, but is malformed
       Serial.println(F("[SX1280] CRC error!"));
@@ -462,7 +469,7 @@ void loop() {
     // start listending again
     state = radio.startReceive();
     if (state == RADIOLIB_ERR_NONE) {
-      Serial.println(F("success!"));
+      // Serial.println(F("success!"));
     } else {
       Serial.print(F("failed, code "));
       Serial.println(state);
@@ -471,13 +478,15 @@ void loop() {
     }
     rxFlag = false;
     enableInterrupt = true;
+    return;
   }
 
   if (transmitted == true) {
     transmitted = false;
     int state = radio.startReceive();
     if (state == RADIOLIB_ERR_NONE) {
-      Serial.println(F("success!"));
+      // Serial.println(F("success!"));
+      return;
     } else {
       Serial.print(F("failed, code "));
       Serial.println(state);
@@ -497,5 +506,5 @@ void loop() {
     transmitData(&data);
   }
 
-  delay(500);
+  delay(2);
 }
