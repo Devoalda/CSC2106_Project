@@ -18,21 +18,17 @@ Consist of leaf nodes (this) and master node.
 #include "boards.h"
 #endif
 
-#ifndef SENSOR_DATA
-#define SENSOR_DATA
-#include "sensorData.h"
-#endif
-
 #include <RadioLib.h>
+#include <SensirionI2CScd4x.h>
 
 #define DISCOVERY_MESSAGE 0
 #define DISCOVERY_REPLY_MESSAGE 1
 #define DATA_MESSAGE 2
 #define DATA_REPLY_MESSAGE 3
 
-#define WAITING_THRESHOLD 4000      // 4 seconds reply waiting time
+#define WAITING_THRESHOLD 1000      // 4 seconds reply waiting time
 #define MAX_RETRY 3                 // 3 retries
-#define SENSOR_DATA_INTERVAL 10000  // 10 seconds update interval
+#define SENSOR_DATA_INTERVAL 1000  // 10 seconds update interval
 
 SX1280 radio = new Module(RADIO_CS_PIN, RADIO_DIO1_PIN, RADIO_RST_PIN, RADIO_BUSY_PIN);
 
@@ -58,6 +54,172 @@ volatile bool rxFlag = false;
 
 // initiate to max integer value, to be set after discovery
 volatile int selfLevel = 2147483647;
+
+// Define the maximum length of the MAC address
+const int MAX_MAC_LENGTH = 18;  // For example, a MAC address is usually 17 characters long (including colons) plus 1 for null terminator
+
+char selfAddr[MAX_MAC_LENGTH];
+
+// Struc for transmitting sensor data
+typedef struct SensorData {
+  // uint8_t rootNodeAddress;
+  uint8_t requestType;
+  char MACaddr[MAX_MAC_LENGTH];  // Use a char array to store the MAC address
+  char SMACaddr[MAX_MAC_LENGTH]; // self mac
+  float c02Data;
+  float temperatureData;
+  float humidityData;
+  uint8_t randomNumber;
+} SensorData;
+
+SensorData sensorData = {
+  .requestType = 2
+};
+
+uint16_t error;
+char errorMessage[256];
+uint16_t co2 = 0;
+float temperature = 0.0f;
+float humidity = 0.0f;
+bool isDataReady = false;
+
+float getRandomFloat(float min, float max) {
+  // Generate a random floating-point number
+  float randomFloat = min + random() / ((float)RAND_MAX / (max - min));
+
+  // Convert the float to a string
+  // char buffer[10];                     // Adjust the size as needed
+  // dtostrf(randomFloat, 6, 2, buffer);  // Format the float with 6 total characters and 2 decimal places
+  // String floatString = String(buffer);
+
+  return randomFloat;
+}
+
+// Function to parse a String MAC address to uint8_t arra
+
+String getRandomFloatAsString(float min, float max) {
+  // Generate a random floating-point number
+  float randomFloat = min + random() / ((float)RAND_MAX / (max - min));
+
+  // Convert the float to a string
+  char buffer[10];                     // Adjust the size as needed
+  dtostrf(randomFloat, 6, 2, buffer);  // Format the float with 6 total characters and 2 decimal places
+  String floatString = String(buffer);
+
+  return floatString;
+}
+
+void formatMacAddress(const uint8_t *macAddr, char *buffer, int maxLength)
+// Formats MAC Address
+{
+  snprintf(buffer, maxLength, "%02x:%02x:%02x:%02x:%02x:%02x", macAddr[0], macAddr[1], macAddr[2], macAddr[3], macAddr[4], macAddr[5]);
+}
+
+// Function to parse a String MAC address to uint8_t array
+void parseMacAddress(String macAddress, uint8_t *macAddressBytes) {
+  sscanf(macAddress.c_str(), "%hhx:%hhx:%hhx:%hhx:%hhx:%hhx",
+         &macAddressBytes[0], &macAddressBytes[1], &macAddressBytes[2],
+         &macAddressBytes[3], &macAddressBytes[4], &macAddressBytes[5]);
+}
+
+int getRandomInt(int min, int max) {
+  return min + (rand() % (max - min + 1));
+}
+
+
+SensirionI2CScd4x scd4x;
+
+void printUint16Hex(uint16_t value) {
+  Serial.print(value < 4096 ? "0" : "");
+  Serial.print(value < 256 ? "0" : "");
+  Serial.print(value < 16 ? "0" : "");
+  Serial.print(value, HEX);
+}
+
+void printSerialNumber(uint16_t serial0, uint16_t serial1, uint16_t serial2) {
+  Serial.print("Serial: 0x");
+  printUint16Hex(serial0);
+  printUint16Hex(serial1);
+  printUint16Hex(serial2);
+  Serial.println();
+}
+
+void setupSensor() {
+  Wire.begin(I2C_SDA, I2C_SCL);
+
+  uint16_t error;
+  char errorMessage[256];
+
+  scd4x.begin(Wire);
+
+  // stop potentially previously started measurement
+  error = scd4x.stopPeriodicMeasurement();
+  if (error) {
+    Serial.print("Error trying to execute stopPeriodicMeasurement(): ");
+    errorToString(error, errorMessage, 256);
+    Serial.println(errorMessage);
+  }
+
+  uint16_t serial0;
+  uint16_t serial1;
+  uint16_t serial2;
+  error = scd4x.getSerialNumber(serial0, serial1, serial2);
+  if (error) {
+    Serial.print("Error trying to execute getSerialNumber(): ");
+    errorToString(error, errorMessage, 256);
+    Serial.println(errorMessage);
+  } else {
+    printSerialNumber(serial0, serial1, serial2);
+  }
+
+  // Start Measurement
+  error = scd4x.startPeriodicMeasurement();
+  if (error) {
+    Serial.print("Error trying to execute startPeriodicMeasurement(): ");
+    errorToString(error, errorMessage, 256);
+    Serial.println(errorMessage);
+  }
+}
+
+bool getSensorReading() {
+  error = scd4x.getDataReadyFlag(isDataReady);
+  if (error) {
+    Serial.print("Error trying to execute getDataReadyFlag(): ");
+    errorToString(error, errorMessage, 256);
+    Serial.println(errorMessage);
+    // If error, use random data
+    sensorData.c02Data = getRandomFloat(100.0, 1000.0);
+    sensorData.temperatureData = getRandomFloat(0.0, 40.0);
+    sensorData.humidityData = getRandomFloat(90.0, 1030.0);
+  } else if (!isDataReady) {
+    // If data not ready, return
+    return false;
+  } else {
+    // Read sensor measurement
+    error = scd4x.readMeasurement(co2, temperature, humidity);
+    if (error) {
+      Serial.print("Error trying to execute readMeasurement(): ");
+      errorToString(error, errorMessage, 256);
+      Serial.println(errorMessage);
+      // If error, use random data
+      sensorData.c02Data = getRandomFloat(100.0, 1000.0);
+      sensorData.temperatureData = getRandomFloat(0.0, 40.0);
+      sensorData.humidityData = getRandomFloat(90.0, 1030.0);
+    } else if (co2 == 0) {
+      Serial.println("Invalid sample detected, skipping.");
+      // If invalid sample, use random data
+      sensorData.c02Data = getRandomFloat(100.0, 1000.0);
+      sensorData.temperatureData = getRandomFloat(0.0, 40.0);
+      sensorData.humidityData = getRandomFloat(90.0, 1030.0);
+    } else {
+      // Assign sensor data to sensorData structure
+      sensorData.c02Data = co2;
+      sensorData.temperatureData = temperature;
+      sensorData.humidityData = humidity;
+    }
+  }
+  return true;
+}
 
 typedef struct SensorDataReply {
   uint8_t requestType;
@@ -284,6 +446,8 @@ String serializeSensorDataToString(SensorData* data) {
   result += ",";  // Adding a separator for readability, can be omitted.
   result += data->MACaddr;
   result += ",";
+  result += data->SMACaddr;
+  result += ",",
   result.concat(data->c02Data);
   result += ",";
   result.concat(data->temperatureData);
@@ -302,24 +466,29 @@ SensorData deserializeStringToSensorData(String* serialized) {
   int thirdCommaIndex = serialized->indexOf(',', secondCommaIndex + 1);
   int fourthCommaIndex = serialized->indexOf(',', thirdCommaIndex + 1);
   int fifthCommaIndex = serialized->indexOf(',', fourthCommaIndex + 1);
+  int sixthCommaIndex = serialized->indexOf(',', fifthCommaIndex + 1);
 
   // Convert and assign requestType
   sensorData.requestType = (uint8_t)serialized->substring(0, firstCommaIndex).toInt();
 
-  // Assign MACaddr
+  // Assign MACaddr (receiver)
   String macAddrString = serialized->substring(firstCommaIndex + 1, secondCommaIndex);
   macAddrString.toCharArray(sensorData.MACaddr, MAX_MAC_LENGTH);
 
+  // sender's mac addr
+  String sMacAddrString = serialized->substring(secondCommaIndex + 1, thirdCommaIndex);
+  sMacAddrString.toCharArray(sensorData.SMACaddr, MAX_MAC_LENGTH);
+
   // Convert and assign c02Data
-  sensorData.c02Data = serialized->substring(secondCommaIndex + 1, thirdCommaIndex).toFloat();
+  sensorData.c02Data = serialized->substring(thirdCommaIndex + 1, fourthCommaIndex).toFloat();
 
   // Convert and assign temperatureData
-  sensorData.temperatureData = serialized->substring(thirdCommaIndex + 1, fourthCommaIndex).toFloat();
+  sensorData.temperatureData = serialized->substring(fourthCommaIndex + 1, fifthCommaIndex).toFloat();
 
   // Convert and assign humidityData
-  sensorData.humidityData = serialized->substring(fourthCommaIndex + 1).toFloat();
+  sensorData.humidityData = serialized->substring(fifthCommaIndex + 1, sixthCommaIndex).toFloat();
 
-  sensorData.randomNumber = serialized->substring(fifthCommaIndex + 1).toFloat();
+  sensorData.randomNumber = serialized->substring(sixthCommaIndex + 1).toFloat();
 
   return sensorData;
 }  // deserializeStringToSensorData
@@ -582,6 +751,7 @@ void loopLoRa() {
     sensorTimer = timeNow;
     if (getSensorReading() == true) {
       sensorData.randomNumber = getRandomInt(1000, 9999);
+      strncpy(sensorData.SMACaddr, selfAddr, MAX_MAC_LENGTH);
       dataToSend.addToLast(serializeSensorDataToString(&sensorData));
       // Serial.println("Add sensor data to dataToSend queue");
     }

@@ -1,6 +1,5 @@
 #include <WiFi.h>
 #include "LoraMesh.h"
-#include "ESPNowMesh.h"
 
 
 void setup() {
@@ -29,7 +28,6 @@ void setup() {
   WiFi.disconnect();
 
   setupLoRa();
-  setupESP();
   setupSensor();
 }
 

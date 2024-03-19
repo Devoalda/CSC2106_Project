@@ -36,10 +36,12 @@ typedef struct DiscoveryMessage {
 
 DiscoveryMessage dm = { DISCOVERY_MESSAGE };
 
+// Struc for transmitting sensor data
 typedef struct SensorData {
   // uint8_t rootNodeAddress;
   uint8_t requestType;
   char MACaddr[MAX_MAC_LENGTH];  // Use a char array to store the MAC address
+  char SMACaddr[MAX_MAC_LENGTH]; // self mac
   float c02Data;
   float temperatureData;
   float humidityData;
@@ -162,26 +164,6 @@ public:
 Queue<String> dataReceived;
 Queue<String> dataToSend;
 
-String serializeSensorDataToString() {
-  String result;
-
-  // Concatenate integer and float values directly.
-  // Use String constructor or concat() for conversion from numeric to String.
-  result.concat(sensorData.requestType);
-  result += ",";  // Adding a separator for readability, can be omitted.
-  result += sensorData.MACaddr;
-  result += ",";
-  result.concat(sensorData.c02Data);
-  result += ",";
-  result.concat(sensorData.temperatureData);
-  result += ",";
-  result.concat(sensorData.humidityData);
-  result += ",";
-  result.concat(sensorData.randomNumber);
-
-  return result;
-}
-
 String serializeDRMToString() {
   String result;
 
@@ -211,24 +193,29 @@ SensorData deserializeStringToSensorData(String* serialized) {
   int thirdCommaIndex = serialized->indexOf(',', secondCommaIndex + 1);
   int fourthCommaIndex = serialized->indexOf(',', thirdCommaIndex + 1);
   int fifthCommaIndex = serialized->indexOf(',', fourthCommaIndex + 1);
+  int sixthCommaIndex = serialized->indexOf(',', fifthCommaIndex + 1);
 
   // Convert and assign requestType
   sensorData.requestType = (uint8_t)serialized->substring(0, firstCommaIndex).toInt();
 
-  // Assign MACaddr
+  // Assign MACaddr (receiver)
   String macAddrString = serialized->substring(firstCommaIndex + 1, secondCommaIndex);
   macAddrString.toCharArray(sensorData.MACaddr, MAX_MAC_LENGTH);
 
+  // sender's mac addr
+  String sMacAddrString = serialized->substring(secondCommaIndex + 1, thirdCommaIndex);
+  sMacAddrString.toCharArray(sensorData.SMACaddr, MAX_MAC_LENGTH);
+
   // Convert and assign c02Data
-  sensorData.c02Data = serialized->substring(secondCommaIndex + 1, thirdCommaIndex).toFloat();
+  sensorData.c02Data = serialized->substring(thirdCommaIndex + 1, fourthCommaIndex).toFloat();
 
   // Convert and assign temperatureData
-  sensorData.temperatureData = serialized->substring(thirdCommaIndex + 1, fourthCommaIndex).toFloat();
+  sensorData.temperatureData = serialized->substring(fourthCommaIndex + 1, fifthCommaIndex).toFloat();
 
   // Convert and assign humidityData
-  sensorData.humidityData = serialized->substring(fourthCommaIndex + 1).toFloat();
+  sensorData.humidityData = serialized->substring(fifthCommaIndex + 1, sixthCommaIndex).toFloat();
 
-  sensorData.randomNumber = serialized->substring(fifthCommaIndex + 1).toFloat();
+  sensorData.randomNumber = serialized->substring(sixthCommaIndex + 1).toFloat();
 
   return sensorData;
 }  // deserializeStringToSensorData
@@ -295,11 +282,11 @@ void processStringReceived(String* str) {
     }
 
     // TODO: send to server?
-    Serial.printf("%s,%.2f,%.2f,%.2f\n", receivedData.MACaddr, receivedData.c02Data, receivedData.temperatureData, receivedData.humidityData);
+    Serial.printf("%s,%.2f,%.2f,%.2f\n", receivedData.SMACaddr, receivedData.c02Data, receivedData.temperatureData, receivedData.humidityData);
 
     if (u8g2) {
       u8g2->clearBuffer();
-      u8g2->drawStr(0, 12, (String(receivedData.MACaddr)).c_str());
+      u8g2->drawStr(0, 12, (String(receivedData.SMACaddr)).c_str());
       u8g2->drawStr(0, 24, ("CO2: " + String(receivedData.c02Data)).c_str());
       u8g2->drawStr(0, 36, ("Temp: " + String(receivedData.temperatureData)).c_str());
       u8g2->drawStr(0, 48, ("Humidity: " + String(receivedData.humidityData)).c_str());
