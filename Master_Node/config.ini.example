@@ -1,0 +1,6 @@
+[mqtt]
+broker_host = localhost
+broker_port = 1883
+username = username
+password = password
+

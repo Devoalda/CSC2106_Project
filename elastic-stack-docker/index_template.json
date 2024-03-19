@@ -1,0 +1,31 @@
+{
+  "index_patterns": ["sensor-data-*"],
+  "settings": {
+    "number_of_shards": 1,
+    "number_of_replicas": 1,
+    "refresh_interval": "30s"
+  },
+  "mappings": {
+    "properties": {
+      "timestamp": {
+        "type": "date"
+      },
+      "macStr": {
+        "type": "keyword"
+      },
+      "rootNodeAddress": {
+        "type": "integer"
+      },
+      "c02Data": {
+        "type": "float"
+      },
+      "temperatureData": {
+        "type": "float"
+      },
+      "thirdValue": {
+        "type": "float"
+      }
+    }
+  }
+}
+
