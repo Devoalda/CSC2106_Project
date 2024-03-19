@@ -9,7 +9,6 @@ esp_now_peer_num_t peer_num;
 uint8_t isConnectedToMaster = 0;
 uint8_t numberOfHopsToMaster = 0;
 uint8_t healthCheckCount = 0;
-SensirionI2CScd4x scd4x;
 SensorData sensorData;
 Handshake msg;
 
@@ -202,45 +201,6 @@ void broadcast(const Handshake &msg)
     Serial.println("Unknown error");
   }
 }
-float getRandomFloat(float min, float max) {
-  // Generate a random floating-point number
-  float randomFloat = min + random() / ((float)RAND_MAX / (max - min));
-
-  // Convert the float to a string
-  // char buffer[10];                     // Adjust the size as needed
-  // dtostrf(randomFloat, 6, 2, buffer);  // Format the float with 6 total characters and 2 decimal places
-  // String floatString = String(buffer);
-
-  return randomFloat;
-}
-
-String getRandomFloatAsString(float min, float max) {
-  // Generate a random floating-point number
-  float randomFloat = min + random() / ((float)RAND_MAX / (max - min));
-
-  // Convert the float to a string
-  char buffer[10];                     // Adjust the size as needed
-  dtostrf(randomFloat, 6, 2, buffer);  // Format the float with 6 total characters and 2 decimal places
-  String floatString = String(buffer);
-
-  return floatString;
-}
-
-void printUint16Hex(uint16_t value) {
-  Serial.print(value < 4096 ? "0" : "");
-  Serial.print(value < 256 ? "0" : "");
-  Serial.print(value < 16 ? "0" : "");
-  Serial.print(value, HEX);
-}
-
-void printSerialNumber(uint16_t serial0, uint16_t serial1, uint16_t serial2) {
-  Serial.print("Serial: 0x");
-  printUint16Hex(serial0);
-  printUint16Hex(serial1);
-  printUint16Hex(serial2);
-  Serial.println();
-}
-
 
 void espnowSetup() {
   // Initialize ESP-NOW
@@ -259,40 +219,40 @@ void espnowSetup() {
   // esp_wifi_set_channel(13, WIFI_SECOND_CHAN_NONE);
   // esp_wifi_set_promiscuous(false);
 
-  Wire.begin(I2C_SDA, I2C_SCL);
-
-  uint16_t error;
-  char errorMessage[256];
-
-  scd4x.begin(Wire);
-
-  // stop potentially previously started measurement
-  error = scd4x.stopPeriodicMeasurement();
-  if (error) {
-    Serial.print("Error trying to execute stopPeriodicMeasurement(): ");
-    errorToString(error, errorMessage, 256);
-    Serial.println(errorMessage);
-  }
-
-  uint16_t serial0;
-  uint16_t serial1;
-  uint16_t serial2;
-  error = scd4x.getSerialNumber(serial0, serial1, serial2);
-  if (error) {
-    Serial.print("Error trying to execute getSerialNumber(): ");
-    errorToString(error, errorMessage, 256);
-    Serial.println(errorMessage);
-  } else {
-    printSerialNumber(serial0, serial1, serial2);
-  }
-
-  // Start Measurement
-  error = scd4x.startPeriodicMeasurement();
-  if (error) {
-    Serial.print("Error trying to execute startPeriodicMeasurement(): ");
-    errorToString(error, errorMessage, 256);
-    Serial.println(errorMessage);
-  }
+//  Wire.begin(I2C_SDA, I2C_SCL);
+//
+//  uint16_t error;
+//  char errorMessage[256];
+//
+//  scd4x.begin(Wire);
+//
+//  // stop potentially previously started measurement
+//  error = scd4x.stopPeriodicMeasurement();
+//  if (error) {
+//    Serial.print("Error trying to execute stopPeriodicMeasurement(): ");
+//    errorToString(error, errorMessage, 256);
+//    Serial.println(errorMessage);
+//  }
+//
+//  uint16_t serial0;
+//  uint16_t serial1;
+//  uint16_t serial2;
+//  error = scd4x.getSerialNumber(serial0, serial1, serial2);
+//  if (error) {
+//    Serial.print("Error trying to execute getSerialNumber(): ");
+//    errorToString(error, errorMessage, 256);
+//    Serial.println(errorMessage);
+//  } else {
+//    printSerialNumber(serial0, serial1, serial2);
+//  }
+//
+//  // Start Measurement
+//  error = scd4x.startPeriodicMeasurement();
+//  if (error) {
+//    Serial.print("Error trying to execute startPeriodicMeasurement(): ");
+//    errorToString(error, errorMessage, 256);
+//    Serial.println(errorMessage);
+//  }
 
 }
 

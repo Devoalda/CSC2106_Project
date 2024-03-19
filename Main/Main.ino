@@ -1,6 +1,8 @@
-#include "MACaddr.h"
 #include <Arduino.h>
+#include "MACaddr.h"
 #include "ESPNowCommunication.h"
+#include "LoraCommunication.h"
+
 
 void setup() {
   // Set up Serial Monitor
@@ -9,11 +11,14 @@ void setup() {
 
   // Setup code here
   setupMACaddr();
+  setupSensor();
   espnowSetup();
+  loraSetup();
   Serial.println("setup completed");
 }
 
 void loop() {
   // Loop code here
   espnowLoop();
+  // loraLoop();
 }

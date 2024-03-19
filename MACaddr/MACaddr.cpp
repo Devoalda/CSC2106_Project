@@ -1,6 +1,7 @@
 #include "MACaddr.h"
 
 char MACaddrG[MAX_MAC_LENGTH]; // Define the global variable
+SensirionI2CScd4x scd4x;
 
 void formatMacAddress(const uint8_t *macAddr, char *buffer, int maxLength) {
   // Function definition
@@ -27,4 +28,65 @@ void setupMACaddr() {
   Serial.println(MACaddrG);
 
   WiFi.disconnect();
+}
+
+void printUint16Hex(uint16_t value) {
+  Serial.print(value < 4096 ? "0" : "");
+  Serial.print(value < 256 ? "0" : "");
+  Serial.print(value < 16 ? "0" : "");
+  Serial.print(value, HEX);
+}
+
+void printSerialNumber(uint16_t serial0, uint16_t serial1, uint16_t serial2) {
+  Serial.print("Serial: 0x");
+  printUint16Hex(serial0);
+  printUint16Hex(serial1);
+  printUint16Hex(serial2);
+  Serial.println();
+}
+
+void setupSensor() {
+Wire.begin(I2C_SDA, I2C_SCL);
+
+        uint16_t error;
+        char errorMessage[256];
+
+        scd4x.begin(Wire);
+
+        // stop potentially previously started measurement
+        error = scd4x.stopPeriodicMeasurement();
+        if (error) {
+          Serial.print("Error trying to execute stopPeriodicMeasurement(): ");
+          errorToString(error, errorMessage, 256);
+          Serial.println(errorMessage);
+        }
+
+        uint16_t serial0;
+        uint16_t serial1;
+        uint16_t serial2;
+        error = scd4x.getSerialNumber(serial0, serial1, serial2);
+        if (error) {
+          Serial.print("Error trying to execute getSerialNumber(): ");
+          errorToString(error, errorMessage, 256);
+          Serial.println(errorMessage);
+        } else {
+          printSerialNumber(serial0, serial1, serial2);
+        }
+
+        // Start Measurement
+        error = scd4x.startPeriodicMeasurement();
+        if (error) {
+          Serial.print("Error trying to execute startPeriodicMeasurement(): ");
+          errorToString(error, errorMessage, 256);
+          Serial.println(errorMessage);
+        }
+}
+
+float getRandomFloat(float min, float max) {
+  float randomFloat = min + random() / ((float)RAND_MAX / (max - min));
+  return randomFloat;
+}
+
+int getRandomInt(int min, int max) {
+  return min + (rand() % (max - min + 1));
 }

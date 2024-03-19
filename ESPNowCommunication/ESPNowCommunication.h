@@ -4,9 +4,18 @@
 
 #include <esp_now.h>
 #include <PubSubClient.h>
+
+#ifndef Arduino_h
+#define Arduino_h
 #include <Arduino.h>
+#endif
+
 #include <SensirionI2CScd4x.h>
+
+#ifndef Wire_h
+#define Wire_h
 #include <Wire.h>
+#endif
 
 #define MAX_NODES 10
 #define CONNECTION_ATTEMPTS_LIMIT 10
@@ -49,7 +58,7 @@ extern esp_now_peer_num_t peer_num;
 extern uint8_t isConnectedToMaster;
 extern uint8_t numberOfHopsToMaster;
 extern uint8_t healthCheckCount;
-extern SensirionI2CScd4x scd4x;
+//extern SensirionI2CScd4x scd4x;
 extern SensorData sensorData;
 extern Handshake msg;
 extern char MACaddrG[MAX_MAC_LENGTH];
