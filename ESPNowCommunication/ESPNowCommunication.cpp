@@ -12,14 +12,6 @@ uint8_t healthCheckCount = 0;
 SensirionI2CScd4x scd4x;
 SensorData sensorData;
 Handshake msg;
-char MACaddrG[MAX_MAC_LENGTH];
-
-
-void formatMacAddress(const uint8_t *macAddr, char *buffer, int maxLength)
-// Formats MAC Address
-{
-  snprintf(buffer, maxLength, "%02x:%02x:%02x:%02x:%02x:%02x", macAddr[0], macAddr[1], macAddr[2], macAddr[3], macAddr[4], macAddr[5]);
-}
 
 void addPeerToPeerList(const uint8_t *macAddr)
 // Add the received MAC address into the peer list if it doesn't exist
@@ -222,13 +214,6 @@ float getRandomFloat(float min, float max) {
   return randomFloat;
 }
 
-// Function to parse a String MAC address to uint8_t array
-void parseMacAddress(String macAddress, uint8_t *macAddressBytes) {
-  sscanf(macAddress.c_str(), "%hhx:%hhx:%hhx:%hhx:%hhx:%hhx",
-         &macAddressBytes[0], &macAddressBytes[1], &macAddressBytes[2],
-         &macAddressBytes[3], &macAddressBytes[4], &macAddressBytes[5]);
-}
-
 String getRandomFloatAsString(float min, float max) {
   // Generate a random floating-point number
   float randomFloat = min + random() / ((float)RAND_MAX / (max - min));
@@ -258,28 +243,6 @@ void printSerialNumber(uint16_t serial0, uint16_t serial1, uint16_t serial2) {
 
 
 void espnowSetup() {
-
-  // Set up Serial Monitor
-  Serial.begin(115200);
-  delay(1000);
-
-  // Set ESP32 in STA mode to begin with
-  WiFi.mode(WIFI_STA);
-  Serial.println("ESP-NOW Broadcast Demo");
-
-  // Print MAC address
-
-  // Print the MAC address
-  Serial.print("MAC Address: ");
-  Serial.println(WiFi.macAddress());
-  // formatMacAddress(WiFi.macAddress(), MACaddrG, MAX_MAC_LENGTH); // Get and format the MAC address, then store it in sensorData.MACaddr
-
-
-  // Disconnect from WiFi
-  WiFi.disconnect();
-
-
-
   // Initialize ESP-NOW
   if (esp_now_init() == ESP_OK) {
     Serial.println("ESP-NOW Init Success");

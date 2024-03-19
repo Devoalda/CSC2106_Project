@@ -1,7 +1,7 @@
+#include "MACaddr.h"
 #ifndef ESP_NOW_COMMUNICATION_H
 #define ESP_NOW_COMMUNICATION_H
 
-#include <WiFi.h>
 #include <esp_now.h>
 #include <PubSubClient.h>
 #include <Arduino.h>
@@ -11,7 +11,6 @@
 #define MAX_NODES 10
 #define CONNECTION_ATTEMPTS_LIMIT 10
 #define CONNECTION_TIMEOUT 30000
-#define MAX_MAC_LENGTH 18
 
 // Liligo
 // #define I2C_SDA 46
@@ -55,16 +54,12 @@ extern SensorData sensorData;
 extern Handshake msg;
 extern char MACaddrG[MAX_MAC_LENGTH];
 
-
-
-void formatMacAddress(const uint8_t *macAddr, char *buffer, int maxLength);
 void addPeerToPeerList(const uint8_t *macAddr);
 void sendToAllPeers(const SensorData &sensorData);
 void receiveCallback(const uint8_t *macAddr, const uint8_t *data, int dataLen);
 void sentCallback(const uint8_t *macAddr, esp_now_send_status_t status);
 void broadcast(const Handshake &msg);
 float getRandomFloat(float min, float max);
-void parseMacAddress(String macAddress, uint8_t *macAddressBytes);
 String getRandomFloatAsString(float min, float max);
 void printUint16Hex(uint16_t value);
 void printSerialNumber(uint16_t serial0, uint16_t serial1, uint16_t serial2);
