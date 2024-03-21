@@ -483,21 +483,10 @@ void loraSetup() {
       // set the function that will be called
       // when packet transmission is finished
       radio.setDio1Action(setFlag);
-
-      // start listening for LoRa packets
-      Serial.print(F("LoRa starting to listen ... "));
-      state = radio.startReceive();
-      if (state == RADIOLIB_ERR_NONE) {
-        Serial.println(F("success!"));
-      } else {
-        Serial.print(F("failed, code "));
-        Serial.println(state);
-        while (true)
-          ;
-      }
 }
 
 void loraLoop() {
+  Serial.println("loraLoop");
   // regularly get the sensor data to send
   unsigned long timeNow = millis();
   static unsigned long sensorTimer = 0;
@@ -511,6 +500,7 @@ void loraLoop() {
   }
 
   if (rxFlag == true) {
+    Serial.println("rxFlag");
     String receivedMsg;
     int state = radio.readData(receivedMsg);
     if (state == RADIOLIB_ERR_NONE) {
@@ -541,6 +531,7 @@ void loraLoop() {
   }
 
   if (txDone == true) {
+    Serial.println("txDone");
     txDone = false;
     int state = radio.startReceive();
     if (state != RADIOLIB_ERR_NONE) {
@@ -552,6 +543,7 @@ void loraLoop() {
   // if timer is set, check if it's time
   if (replyTimerFlag == true) {
     if (timeNow - replyTimer >= WAITING_THRESHOLD) {
+      Serial.println("replyTimerFlag");
       retry_fail_count++;
       replyTimerFlag = false;
 
