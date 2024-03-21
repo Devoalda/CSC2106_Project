@@ -5,6 +5,7 @@
 #include <RadioLib.h>
 #include <SPI.h>
 #include "MACaddr.h"
+#include "ProtocolManager.h"
 
 #ifndef Arduino_h
 #define Arduino_h

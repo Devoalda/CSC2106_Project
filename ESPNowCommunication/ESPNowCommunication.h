@@ -18,9 +18,6 @@
 #endif
 
 #define MAX_NODES 10
-#define CONNECTION_ATTEMPTS_LIMIT 10
-#define CONNECTION_TIMEOUT 30000
-
 // Liligo
 // #define I2C_SDA 46
 // #define I2C_SCL 45
@@ -28,6 +25,7 @@
 // M5 
 #define I2C_SDA 26
 #define I2C_SCL 25
+
 
 // Struc for transmitting sensor data
 struct SensorData {
@@ -50,18 +48,17 @@ struct Handshake {
 
 
 // Extern variables
-extern bool attemptingConnection;
-extern unsigned long connectionAttemptStartTime;
-extern int numConnectionAttempts;
 extern esp_now_peer_info_t peerInfo;
 extern esp_now_peer_num_t peer_num;
 extern uint8_t isConnectedToMaster;
 extern uint8_t numberOfHopsToMaster;
-extern uint8_t healthCheckCount;
 //extern SensirionI2CScd4x scd4x;
 extern SensorData sensorData;
 extern Handshake msg;
-//extern char MACaddrG[MAX_MAC_LENGTH];
+extern unsigned int failedMessageCount; 
+//extern const unsigned int MAX_FAILED_MESSAGES; 
+
+
 
 void addPeerToPeerList(const uint8_t *macAddr);
 void sendToAllPeers(const SensorData &sensorData);
@@ -73,6 +70,7 @@ String getRandomFloatAsString(float min, float max);
 void printUint16Hex(uint16_t value);
 void printSerialNumber(uint16_t serial0, uint16_t serial1, uint16_t serial2);
 void espnowSetup();
+void espnowUninit();
 void espnowLoop();
 
 #endif

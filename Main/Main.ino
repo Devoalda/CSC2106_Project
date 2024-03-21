@@ -2,6 +2,7 @@
 #include "MACaddr.h"
 #include "ESPNowCommunication.h"
 #include "LoraCommunication.h"
+#include "ProtocolManager.h"
 
 unsigned long startMillis;
 unsigned long currentMillis;
@@ -24,16 +25,31 @@ void setup() {
 }
 
 void loop() {
-  currentMillis = millis();  //get the current "time" (actually the number of milliseconds since the program started)
-  if (isEspnow) {
-    Serial.println("ESPNow");
-    if (currentMillis - startMillis >= period)  //test whether the period has elapsed
-    {
-      isEspnow = false;
+  Serial.println("Ben ben says hi! Failed Message Count: " + String(failedMessageCount));
+
+  // Check if it's time to switch from ESP-NOW to LoRa or vice versa.
+  if (failedMessageCount == MAX_FAILED_MESSAGES) {
+    // Switch protocol
+    isEspnow = !isEspnow; // Toggle between ESP-NOW and LoRa.
+
+    // Reset failed message count after switching.
+    failedMessageCount = 0;
+
+    // Log the switch.
+    if (isEspnow) {
+      Serial.println("Switched to ESP-NOW");
     } else {
-      espnowLoop();
+      Serial.println("Switched to LoRa");
     }
+  }
+
+  // Execute protocol-specific loop.
+  if (isEspnow) {
+    Serial.println("Operating in ESP-NOW mode");
+    espnowLoop();
   } else {
+    Serial.println("Operating in LoRa mode");
     loraLoop();
   }
 }
+

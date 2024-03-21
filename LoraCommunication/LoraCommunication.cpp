@@ -331,6 +331,7 @@ void transmitData(String* data) {
 }  // transmitData
 
 void processStringReceived(String* str) {
+  failedMessageCount = 0;
   // check msg type by spliting the str and check the first int
   int commaIndex = str->indexOf(',');              // Find the index of the first comma
   String msgType = str->substring(0, commaIndex);  // Extract the substring from the beginning to the comma
@@ -545,6 +546,7 @@ void loraLoop() {
     if (timeNow - replyTimer >= WAITING_THRESHOLD) {
       Serial.println("replyTimerFlag");
       retry_fail_count++;
+      failedMessageCount++;
       replyTimerFlag = false;
 
       dataSending.removeIfMatches([](String data) {
@@ -559,6 +561,7 @@ void loraLoop() {
       if (retry_fail_count >= MAX_RETRY) {
         addrList.removeFromFirst();
         retry_fail_count = 0;
+
       }
     }
   }
