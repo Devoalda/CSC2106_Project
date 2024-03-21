@@ -46,13 +46,13 @@ Through the resolution of this pressing problem, the project endeavors to pave t
 ## Dashboard Statistics
 
 ### ESP-NOW Node Power Consumption
-![ESP NOW only](Dashboard_Graphs\ESP-NOW.png)
+![ESP NOW only](Dashboard_Graphs/ESP-NOW.png)
 
 ### ESP-NOW Master Node Power Consumption
-![ESP NOW MASTER](Dashboard_Graphs\ESP-NOW_MASTER.png)
+![ESP NOW MASTER](Dashboard_Graphs/ESP-NOW_MASTER.png)
 
 ### LORA Node Power Consumption
-![LORA](Dashboard_Graphs\LORA.png)
+![LORA](Dashboard_Graphs/LORA.png)
 
 ### LORA Master Node Power Consumption
-![LORA MASTER](Dashboard_Graphs\LORA_MASTER.png)
+![LORA MASTER](Dashboard_Graphs/LORA_MASTER.png)
