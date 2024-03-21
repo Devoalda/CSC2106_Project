@@ -71,13 +71,13 @@ def main(broker_host, broker_port):
             fields = data.split(',')
 
             # Check if the data has the expected number of fields
-            if len(fields) != 4:
+            if len(fields) != 5:
                 print("Unexpected number of fields:", len(fields))
                 continue
 
             # Assuming fields are in the order: macStr, c02Data, temperatureData, humidityData
             try:
-                macStr, c02Data, temperatureData, humidityData = fields
+                macStr, c02Data, temperatureData, humidityData, protocol = fields
             except ValueError:
                 print("Error parsing data fields.")
                 continue
@@ -92,7 +92,8 @@ def main(broker_host, broker_port):
                 "temperatureData": float(temperatureData),
                 "humidityData": float(humidityData),
                 "latitude": latitude,
-                "longitude": longitude
+                "longitude": longitude,
+                "protocol": protocol
             }
 
             # Convert dictionary to JSON string
