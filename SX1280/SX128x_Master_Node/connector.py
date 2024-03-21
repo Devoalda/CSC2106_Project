@@ -5,21 +5,14 @@ import argparse
 import paho.mqtt.client as mqtt
 import json
 import random
-import configparser
-
-# Load configuration from config file
-config = configparser.ConfigParser()
-config.read('config.ini')
 
 # MQTT Broker Settings
-DEFAULT_BROKER_HOST = config.get('mqtt', 'broker_host')
-DEFAULT_BROKER_PORT = config.getint('mqtt', 'broker_port')
-username = config.get('mqtt', 'username')
-password = config.get('mqtt', 'password')
+DEFAULT_BROKER_HOST = "localhost"
+DEFAULT_BROKER_PORT = 1883
 
 # Serial Port Settings
 SERIAL_PORT = '/dev/ttyACM0'  # Adjust this to match your serial port
-BAUD_RATE = 115200  # Adjust this to match your baud rate
+BAUD_RATE = 9600  # Adjust this to match your baud rate
 
 # Predefined list of latitude and longitude coordinates
 locations = [
@@ -47,10 +40,8 @@ def generate_location_data():
 
 def main(broker_host, broker_port):
     # Initialize MQTT client
-    client = mqtt.Client(client_id="", userdata=None, protocol=mqtt.MQTTv5)
+    client = mqtt.Client(client_id="sensor_data_publisher")
     client.on_connect = on_connect
-    client.tls_set(tls_version=mqtt.ssl.PROTOCOL_TLS)
-    client.username_pw_set(username, password)
 
     # Connect to MQTT broker
     client.connect(broker_host, broker_port)
@@ -71,13 +62,13 @@ def main(broker_host, broker_port):
             fields = data.split(',')
 
             # Check if the data has the expected number of fields
-            if len(fields) != 5:
+            if len(fields) != 4:
                 print("Unexpected number of fields:", len(fields))
                 continue
 
             # Assuming fields are in the order: macStr, c02Data, temperatureData, humidityData
             try:
-                macStr, c02Data, temperatureData, humidityData, protocol = fields
+                macStr, c02Data, temperatureData, humidityData = fields
             except ValueError:
                 print("Error parsing data fields.")
                 continue
@@ -92,8 +83,7 @@ def main(broker_host, broker_port):
                 "temperatureData": float(temperatureData),
                 "humidityData": float(humidityData),
                 "latitude": latitude,
-                "longitude": longitude,
-                "protocol": protocol
+                "longitude": longitude
             }
 
             # Convert dictionary to JSON string
