@@ -61,7 +61,7 @@ extern uint8_t healthCheckCount;
 //extern SensirionI2CScd4x scd4x;
 extern SensorData sensorData;
 extern Handshake msg;
-extern char MACaddrG[MAX_MAC_LENGTH];
+//extern char MACaddrG[MAX_MAC_LENGTH];
 
 void addPeerToPeerList(const uint8_t *macAddr);
 void sendToAllPeers(const SensorData &sensorData);

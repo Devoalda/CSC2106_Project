@@ -1,4 +1,5 @@
 #include "ESPNowCommunication.h"
+#include "MACaddr.h"
 
 // Initialize variables
 bool attemptingConnection = false;

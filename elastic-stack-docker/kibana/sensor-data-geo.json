@@ -34,6 +34,12 @@
     },
     {
       "set": {
+        "field": "protocol",
+        "value": "{{sensor_data.protocol}}"
+      }
+    },
+    {
+      "set": {
         "field": "device-position",
         "value": "{{sensor_data.latitude}},{{sensor_data.longitude}}"
       }
