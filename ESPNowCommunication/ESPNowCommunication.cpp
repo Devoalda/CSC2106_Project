@@ -112,7 +112,6 @@ void receiveCallback(const uint8_t *macAddr, const uint8_t *data, int dataLen)
         esp_now_add_peer(&peerInfo);
       }
 
-      // send
       esp_err_t result = esp_now_send(macAddr, (const uint8_t *)&replyMsg, sizeof(Handshake));
 
       // Remove the broadcast address from the peer list
@@ -303,12 +302,6 @@ void espnowUninit()
 
 void espnowLoop()
 {
-  // if (getCurrentProtocol() != ProtocolState::ESP_NOW)
-  // {
-  //   Serial.println("ESP-NOW not selected as the current protocol");
-  //   return;
-  // }
-
   SensorData sensorData;
 
   // Read sensor data
